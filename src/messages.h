@@ -14,7 +14,7 @@
 
 namespace client_messages {
 
-enum ClientMessage {
+enum ClientMessageType {
   Join, PlaceBomb, PlaceBlock, Move
 };
 
@@ -34,20 +34,8 @@ struct Move {
 
 }; // namespace client_message
 
-// Overloading operator>> where needed.
-
-inline Ser& operator<<(Ser& ser, const struct client_messages::Join& j)
-{
-  return ser << client_messages::Join << j.name;
-}
-
-inline Ser& operator<<(Ser& ser, const struct client_messages::Move& m)
-{
-  return ser << client_messages::Move << m.direction;
-}
-
 // todo: is there point in serialising enums with one field?
-namespace server_message {
+namespace server_messages {
 
 using PlayerId = uint8_t;
 using BombId = uint32_t;
@@ -97,7 +85,7 @@ struct PlayerMoved {
 using EventVar = std::variant<struct BombPlaced, struct BombExploded,
                              struct PlayerMoved, struct BlockPlaced>;
 
-enum ServerMessage {
+enum ServerMessageType {
   Hello, AcceptedPlayer, GameStarted, Turn, GameEnded
 };
 
@@ -133,71 +121,38 @@ struct GameEnded {
   std::map<PlayerId, Score> scores;
 };
 
-}; // namespace server_message
+}; // namespace server_messagess
 
-// ok now, adding overloads for server_messages where needed
+// ok now, adding overloads for server_messagess where needed
 // this is going to be painful innit...
 
-inline Ser& operator<<(Ser& ser, const struct server_message::Hello& hello)
-{
-  return ser << server_message::Hello << hello.server_name << hello.players_count
-             << hello.size_x << hello.size_y << hello.game_length
-             << hello.explosion_radius << hello.bomb_timer;
-}
+Ser& operator<<(Ser& ser, const struct client_messages::Join& j);
 
-inline Ser& operator<<(Ser& ser, const struct server_message::AcceptedPlayer& ap)
-{
-  return ser << server_message::AcceptedPlayer << ap.id << ap.player;
-}
+Ser& operator<<(Ser& ser, const struct client_messages::Move& m);
 
-inline Ser& operator<<(Ser& ser, const struct server_message::GameStarted& gs)
-{
-  return ser << server_message::GameStarted << gs.players;
-}
+Ser& operator<<(Ser& ser, const struct server_messages::Hello& hello);
 
-inline Ser& operator<<(Ser& ser, const struct server_message::Turn& turn)
-{
-  return ser << server_message::Turn << turn.turn << turn.events;
-}
+Ser& operator<<(Ser& ser, const struct server_messages::AcceptedPlayer& ap);
 
-inline Ser& operator<<(Ser& ser, const struct server_message::GameEnded& ge)
-{
-  return ser << server_message::GameEnded << ge.scores;
-}
+Ser& operator<<(Ser& ser, const struct server_messages::GameStarted& gs);
 
-inline Ser& operator<<(Ser& ser, const server_message::Position& position)
-{
-  return ser << position.first << position.second;
-}
+Ser& operator<<(Ser& ser, const struct server_messages::Turn& turn);
+
+Ser& operator<<(Ser& ser, const struct server_messages::GameEnded& ge);
+
+Ser& operator<<(Ser& ser, const server_messages::Position& position);
+
+Ser& operator<<(Ser& ser, const struct server_messages::BombPlaced& bp);
+
+Ser& operator<<(Ser& ser, const struct server_messages::BombExploded& be);
+
+Ser& operator<<(Ser& ser, const struct server_messages::PlayerMoved& pm);
+
+Ser& operator<<(Ser& ser, const struct server_messages::BlockPlaced& bp);
+
+Ser& operator<<(Ser& ser, const server_messages::EventVar& ev);
 
 // All event types may be serialised!
-inline Ser& operator<<(Ser& ser, const struct server_message::BombPlaced& bp)
-{
-  return ser << server_message::BombPlaced << bp.id << bp.position;
-}
-
-inline Ser& operator<<(Ser& ser, const struct server_message::BombExploded& be)
-{
-  return ser << server_message::BombExploded << be.id
-             << be.robots_destroyed << be.blocks_destroyed;
-}
-
-inline Ser& operator<<(Ser& ser, const struct server_message::PlayerMoved& pm)
-{
-  return ser << server_message::PlayerMoved << pm.id << pm.position;
-}
-
-inline Ser& operator<<(Ser& ser, const struct server_message::BlockPlaced& bp)
-{
-  return ser << server_message::BlockPlaced << bp.position;
-}
-
-inline Ser& operator<<(Ser& ser, const server_message::EventVar& ev)
-{
-  return std::visit([&ser] <typename T> (const T& x) -> Ser& {
-      return ser << x;
-    }, ev);
-}
 
 namespace gui_message {
 

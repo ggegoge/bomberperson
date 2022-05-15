@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
     sock.send_message(bytes);
     ser.clean();
   } else if (opt == "server") {
-    using namespace server_message;
+    using namespace server_messages;
 
     // sample Hello messagea
     struct Hello hello;
