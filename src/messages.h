@@ -4,6 +4,7 @@
 #ifndef _MESSAGES_H_
 #define _MESSAGES_H_
 
+#include <cstdint>
 #include <variant>
 #include <vector>
 #include <map>
@@ -12,7 +13,16 @@
 
 #include "serialise.h"
 
-namespace client_messages {
+template <typename T>
+using List = std::vector<T>;
+using PlayerId = uint8_t;
+using BombId = uint32_t;
+using Position = std::pair<uint16_t, uint16_t>;
+using Score = uint32_t;
+
+
+namespace client_messages
+{
 
 enum ClientMessageType {
   Join, PlaceBomb, PlaceBlock, Move
@@ -27,23 +37,24 @@ struct Join {
   Join(const std::string& str) : name(str) {}
 };
 
+// Placeholders.
+struct PlaceBomb {};
+struct PlaceBlock {};
+
 struct Move {
   Direction direction;
   Move(Direction dir) : direction(dir) {}
 };
 
+// note: the middle two structs do not exist...
+using ClientMessage =
+  std::variant<struct Join, struct PlaceBomb, struct PlaceBlock, struct Move>;
+
 }; // namespace client_message
 
 // todo: is there point in serialising enums with one field?
-namespace server_messages {
-
-using PlayerId = uint8_t;
-using BombId = uint32_t;
-using Position = std::pair<uint16_t, uint16_t>;
-using Score = uint32_t;
-
-template <typename T>
-using List = std::vector<T>;
+namespace server_messages
+{
 
 struct Player {
   std::string name;
@@ -67,7 +78,7 @@ struct BombPlaced {
 
 struct BombExploded {
   BombId id;
-  List<PlayerId> robots_destroyed;
+  List<PlayerId> killed;
   List<Position> blocks_destroyed;
 };
 
@@ -81,9 +92,10 @@ struct PlayerMoved {
   Position position;
 };
 
-// TODO: consider having possibility of reading a variant 
-using EventVar = std::variant<struct BombPlaced, struct BombExploded,
-                             struct PlayerMoved, struct BlockPlaced>;
+// TODO: consider having possibility of reading a variant
+using EventVar =
+  std::variant<struct BombPlaced, struct BombExploded, struct PlayerMoved,
+        struct BlockPlaced>;
 
 enum ServerMessageType {
   Hello, AcceptedPlayer, GameStarted, Turn, GameEnded
@@ -121,41 +133,69 @@ struct GameEnded {
   std::map<PlayerId, Score> scores;
 };
 
+using ServerMessage = std::variant<struct Hello, struct AcceptedPlayer,
+          struct GameStarted, struct Turn, struct GameEnded>;
+
 }; // namespace server_messagess
+
+namespace display_messages
+{
+
+enum DisplayMessageType {
+  Lobby, Game
+};
+
+struct Lobby {
+  std::string server_name;
+  uint8_t players_count;
+  uint16_t size_x;
+  uint16_t size_y;
+  uint16_t game_length;
+  uint16_t explosion_radius;
+  uint16_t bomb_timer;
+  std::map<PlayerId, server_messages::Player> players;
+};
+
+struct Game {
+  std::string server_name;
+  uint16_t size_x;
+  uint16_t size_y;
+  uint16_t game_length;
+  uint16_t turn;
+  std::map<PlayerId, server_messages::Player> players;
+  std::map<PlayerId, Position> player_positions;
+  List<Position> blocks;
+
+};
+
+using DisplayMessage = std::variant<struct Lobby, struct Game>;
+
+}; // namespace display_message
+
+namespace input_messages
+{
+
+enum InputMessageType {
+  PlaceBomb, PlaceBlock, Move
+};
+
+using InputMessage =
+  std::variant<struct client_messages::PlaceBomb, struct client_messages::PlaceBlock,
+      struct client_messages::Move>;
+
+}; // namespace input_messages
 
 // ok now, adding overloads for server_messagess where needed
 // this is going to be painful innit...
 
-Ser& operator<<(Ser& ser, const struct client_messages::Join& j);
+// Main functions I'd advise (to meself) that I use. Do I need them though?
+// perhaps they'r enot really necessary here...
+// although having the variant might be nice --> handling with visits?
+Ser& operator<<(Ser& ser, const client_messages::ClientMessage& msg);
+Ser& operator<<(Ser& ser, const server_messages::ServerMessage& msg);
+Ser& operator<<(Ser& ser, const display_messages::DisplayMessage& msg);
+Ser& operator<<(Ser& ser, const input_messages::InputMessage& msg);
 
-Ser& operator<<(Ser& ser, const struct client_messages::Move& m);
 
-Ser& operator<<(Ser& ser, const struct server_messages::Hello& hello);
-
-Ser& operator<<(Ser& ser, const struct server_messages::AcceptedPlayer& ap);
-
-Ser& operator<<(Ser& ser, const struct server_messages::GameStarted& gs);
-
-Ser& operator<<(Ser& ser, const struct server_messages::Turn& turn);
-
-Ser& operator<<(Ser& ser, const struct server_messages::GameEnded& ge);
-
-Ser& operator<<(Ser& ser, const server_messages::Position& position);
-
-Ser& operator<<(Ser& ser, const struct server_messages::BombPlaced& bp);
-
-Ser& operator<<(Ser& ser, const struct server_messages::BombExploded& be);
-
-Ser& operator<<(Ser& ser, const struct server_messages::PlayerMoved& pm);
-
-Ser& operator<<(Ser& ser, const struct server_messages::BlockPlaced& bp);
-
-Ser& operator<<(Ser& ser, const server_messages::EventVar& ev);
-
-// All event types may be serialised!
-
-namespace gui_message {
-
-}; // namespace gui_message
 
 #endif  // _MESSAGES_H_

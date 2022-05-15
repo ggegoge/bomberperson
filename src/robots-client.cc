@@ -4,6 +4,7 @@
 #include "serialise.h"
 #include "messages.h"
 
+#include <cstddef>
 #include <cstdio>
 #include <iostream>
 
@@ -39,19 +40,12 @@ int main(int argc, char* argv[])
   std::string opt(argv[4]);
   
   if (opt == "client") {
+    using namespace client_messages;
+    
     // wyślemy Join("siemkaaa") -> [0, 8, s, i, ..., a]
-    std::string mess{"siemkaaa"};
-    ser << client_messages::Join << mess;
-    // alternatywnie:
-    // ser.ser((uint8_t)client_messages::Join);
-    // ser.ser(mess);
-    bytes = ser.to_bytes();
-    cout << bytes << "\n";
-    sock.send_message(bytes);
-    ser.clean();
-
-    struct client_messages::Join j("siemaneczko :)");
-    ser << j;
+    struct client_messages::Join j("siemkaaa");
+    ClientMessage msg = j;
+    ser << msg;
     bytes = ser.to_bytes();
     cout << bytes << "\n";
     sock.send_message(bytes);
@@ -65,21 +59,18 @@ int main(int argc, char* argv[])
     ser.clean();
 
     // Teraz PlaceBlock
-    ser << client_messages::PlaceBlock;
+    struct PlaceBlock pb;
+    msg = pb;
+    ser << msg;
     bytes = ser.to_bytes();
     cout << bytes << "\n";
     sock.send_message(bytes);
     ser.clean();
 
     // Teraz Move(Left)
-    ser << client_messages::Move << client_messages::Left;
-    bytes = ser.to_bytes();
-    cout << bytes << "\n";
-    sock.send_message(bytes);
-    ser.clean();
-
     struct client_messages::Move m(client_messages::Right);
-    ser << m;
+    msg = m;
+    ser << msg;
     bytes = ser.to_bytes();
     cout << bytes << "\n";
     sock.send_message(bytes);
@@ -87,6 +78,8 @@ int main(int argc, char* argv[])
   } else if (opt == "server") {
     using namespace server_messages;
 
+    ServerMessage msg;
+    
     // sample Hello messagea
     struct Hello hello;
     hello.server_name = "goowno";
@@ -97,7 +90,8 @@ int main(int argc, char* argv[])
     hello.explosion_radius = 13;
     hello.bomb_timer = 4;
 
-    ser << hello;
+    msg = hello;
+    ser << msg;
     bytes = ser.to_bytes();
     cout << bytes << "\n";
     sock.send_message(bytes);
@@ -118,7 +112,7 @@ int main(int argc, char* argv[])
 
     struct BombExploded be;
     be.id = 77;
-    be.robots_destroyed = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    be.killed = {1, 2, 3, 4, 5, 6, 7, 8, 9};
     be.blocks_destroyed = {{0, 0}, {1,1}, {2,2}};
     e3 = be;
     
@@ -127,13 +121,49 @@ int main(int argc, char* argv[])
     turn.turn = 2137;
     turn.events = evs;
 
+    msg = turn;
     ser.clean();
-    ser << turn;
+    ser << msg;
     bytes = ser.to_bytes();
     cout << bytes << "\n";
     sock.send_message(bytes);
     ser.clean();
     
+  } else if (opt == "display") {
+    using namespace display_messages;
+    DisplayMessage msg;
+    struct Lobby l;
+    l.server_name = "gniox";
+    l.players_count = 11;
+    l.size_x = 1234;
+    l.size_y = 1;
+    l.game_length = 0;
+    l.explosion_radius = 11;
+    l.bomb_timer = 17;
+    struct server_messages::Player p1;
+    p1.name = "kot";
+    p1.address = "1.2.3.4:0001";
+    struct server_messages::Player p2;
+    p2.name = "ja";
+    p2.address = "4.3.2.1:2137";
+    l.players.insert({1, p1});
+    l.players.insert({2, p2});
+
+    msg = l;
+    ser.clean();
+    ser << msg;
+    bytes = ser.to_bytes();
+    cout << bytes << "\n";
+    sock.send_message(bytes);
+    ser.clean();
+  } else if (opt == "input") {
+    using namespace input_messages;
+    struct client_messages::Move m(client_messages::Right);
+    InputMessage msg = m;
+    ser << msg;
+    bytes = ser.to_bytes();
+    sock.send_message(bytes);
+    ser.clean();
   } else {
     cout << "wrong opt!\n";
   }

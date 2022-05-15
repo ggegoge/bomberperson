@@ -1,46 +1,67 @@
 #include "messages.h"
+#include <cstdint>
+#include <iostream>
+
+namespace
+{
 
 using namespace client_messages;
 using namespace server_messages;
-
+using namespace input_messages;
+using namespace display_messages;
 // Overloading operator>> where needed.
 
 Ser& operator<<(Ser& ser, const struct Join& j)
 {
-  return ser << Join << j.name;
+  return ser << j.name;
+}
+
+Ser& operator<<(Ser& ser, const struct PlaceBlock&)
+{
+  return ser;
+}
+
+Ser& operator<<(Ser& ser, const struct PlaceBomb&)
+{
+  return ser;
 }
 
 Ser& operator<<(Ser& ser, const struct Move& m)
 {
-  return ser << Move << m.direction;
+  return ser << m.direction;
 }
 
 // server messages
 Ser& operator<<(Ser& ser, const struct Hello& hello)
 {
-  return ser << Hello << hello.server_name << hello.players_count
+  return ser << hello.server_name << hello.players_count
          << hello.size_x << hello.size_y << hello.game_length
          << hello.explosion_radius << hello.bomb_timer;
 }
 
+Ser& operator<<(Ser& ser, const struct Player& pl)
+{
+  return ser << pl.name << pl.address;
+}
+
 Ser& operator<<(Ser& ser, const struct AcceptedPlayer& ap)
 {
-  return ser << AcceptedPlayer << ap.id << ap.player;
+  return ser << ap.id << ap.player;
 }
 
 Ser& operator<<(Ser& ser, const struct GameStarted& gs)
 {
-  return ser << GameStarted << gs.players;
+  return ser << gs.players;
 }
 
 Ser& operator<<(Ser& ser, const struct Turn& turn)
 {
-  return ser << Turn << turn.turn << turn.events;
+  return ser << turn.turn << turn.events;
 }
 
 Ser& operator<<(Ser& ser, const struct GameEnded& ge)
 {
-  return ser << GameEnded << ge.scores;
+  return ser << ge.scores;
 }
 
 Ser& operator<<(Ser& ser, const Position& position)
@@ -50,28 +71,75 @@ Ser& operator<<(Ser& ser, const Position& position)
 
 Ser& operator<<(Ser& ser, const struct BombPlaced& bp)
 {
-  return ser << BombPlaced << bp.id << bp.position;
+  return ser << bp.id << bp.position;
 }
 
 Ser& operator<<(Ser& ser, const struct BombExploded& be)
 {
-  return ser << BombExploded << be.id
-         << be.robots_destroyed << be.blocks_destroyed;
+  return ser << be.id << be.killed << be.blocks_destroyed;
 }
 
 Ser& operator<<(Ser& ser, const struct PlayerMoved& pm)
 {
-  return ser << PlayerMoved << pm.id << pm.position;
+  return ser << pm.id << pm.position;
 }
 
 Ser& operator<<(Ser& ser, const struct BlockPlaced& bp)
 {
-  return ser << BlockPlaced << bp.position;
+  return ser << bp.position;
 }
 
+// next three should be in the anpn namespace but then i get warnings?....
 Ser& operator<<(Ser& ser, const EventVar& ev)
 {
-  return std::visit([&ser] <typename T> (const T & x) -> Ser& {
-    return ser << x;
+  uint8_t index = ev.index();
+  return std::visit([&ser, index] <typename T> (const T & x) -> Ser& {
+    return ser << (uint8_t)index << x;
   }, ev);
+}
+
+Ser& operator<<(Ser& ser, const struct Lobby& l)
+{
+  return ser << l.server_name << l.players_count << l.size_x << l.size_y <<
+         l.game_length << l.explosion_radius << l.bomb_timer << l.players;
+}
+
+Ser& operator<<(Ser& ser, const struct Game& g)
+{
+  return ser << g.server_name << g.size_x << g.size_y << g.game_length << g.turn
+         << g.players << g.player_positions << g.blocks;
+}
+
+}; // namespace anonymous
+
+Ser& operator<<(Ser& ser, const ServerMessage& msg)
+{
+  uint8_t index = msg.index();
+  return std::visit([&ser, index] <typename T> (const T & x) -> Ser& {
+    return ser << (uint8_t)index << x;
+  }, msg);
+}
+
+Ser& operator<<(Ser& ser, const ClientMessage& msg)
+{
+  uint8_t index = msg.index();
+  return std::visit([&ser, index] <typename T> (const T & x) -> Ser& {
+    return ser << (uint8_t)index << x;
+  }, msg);
+}
+
+Ser& operator<<(Ser& ser, const DisplayMessage& msg)
+{
+  uint8_t index = msg.index();
+  return std::visit([&ser, index] <typename T> (const T & x) -> Ser& {
+    return ser << (uint8_t)index << x;
+  }, msg);
+}
+
+Ser& operator<<(Ser& ser, const InputMessage& msg)
+{
+  uint8_t index = msg.index();
+  return std::visit([&ser, index] <typename T> (const T & x) -> Ser& {
+    return ser << (uint8_t)index << x;
+  }, msg);
 }
