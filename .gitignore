@@ -1,0 +1,10 @@
+
+compile_commands.json
+*~
+.dir-locals.el
+test*
+
+robots-server
+robots-client
+
+notes*
