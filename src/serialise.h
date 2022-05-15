@@ -13,8 +13,11 @@
 #  include <endian.h>
 #endif // __MACH__
 
+#include <iostream>
+
 #include <concepts>
 #include <vector>
+#include <map>
 #include <string>
 #include <cstddef>
 #include <cstdint>
@@ -107,7 +110,7 @@ public:
   }
 
   template <typename T>
-  void ser(const T& item)
+  void ser(const T& item) requires (!std::is_enum_v<T>)
   {
     uint8_t bytes[sizeof(T)];
     *(T*)(bytes) = hton<T>(item);
@@ -119,6 +122,7 @@ public:
   template <typename T>
   void ser(const T& enum_item) requires std::is_enum<T>::value
   {
+    // std::cerr << "enum = " << (int)enum_item << "\n";
     ser((uint8_t)enum_item);
   }
   
@@ -128,6 +132,34 @@ public:
     for (char c : str)
       out.push_back(c);
   }
+
+  template <typename T>
+  void ser(const std::vector<T>& seq)
+  {
+    uint32_t len = seq.size();
+    ser(len);
+
+    for (const T& item : seq)
+      *this << item;
+  }
+
+  template <typename K, typename V>
+  void ser(const std::map<K, V>& map)
+  {
+    uint32_t len = map.size();
+    ser(len);
+
+    for (const auto& [k, v] : map)
+      *this << k << v;
+  }
+
+  template <typename T1, typename T2>
+  void ser(const std::pair<T1, T2>& pair)
+  {
+    std::cerr << "pos in ser\n";
+    *this << pair.first << pair.second;
+  }
+  
   template <typename T>
   Ser& operator<<(const T& item)
   {
