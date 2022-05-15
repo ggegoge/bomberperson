@@ -96,6 +96,11 @@ public:
 class Ser {
   std::vector<uint8_t> out;
 public:
+  void clean()
+  {
+    out = {};
+  }
+  
   std::vector<uint8_t> to_bytes() const
   {
     return out;
@@ -110,11 +115,24 @@ public:
       out.push_back(byte);
   }
 
+  // All enums are serialised as one-byte integers!
+  template <typename T>
+  void ser(const T& enum_item) requires std::is_enum<T>::value
+  {
+    ser((uint8_t)enum_item);
+  }
+  
   void ser(const std::string& str)
   {
     ser<uint8_t>(str.length());
     for (char c : str)
       out.push_back(c);
+  }
+  template <typename T>
+  Ser& operator<<(const T& item)
+  {
+    ser(item);
+    return *this;
   }
 };
 

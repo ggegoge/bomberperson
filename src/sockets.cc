@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <unistd.h>
 
 // There are problems on macos with changing the byte order.
@@ -14,9 +15,41 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <stdexcept>
 
 #include "sockets.h"
+
+namespace
+{
+// works for IPv4, need to make a separate one for IPv6
+// or perhaps such utilities already exist? this is painful making
+// it manually innit ffs
+sockaddr_in get_send_address(const char* host, uint16_t port)
+{
+  addrinfo hints;
+  memset(&hints, 0, sizeof(struct addrinfo));
+  hints.ai_family = AF_INET; // IPv4
+  hints.ai_socktype = SOCK_DGRAM;
+  hints.ai_protocol = IPPROTO_UDP;
+
+  addrinfo* address_result;
+
+  if (getaddrinfo(host, NULL, &hints, &address_result))
+    throw std::runtime_error("Failed to deduce the address.");
+
+  sockaddr_in send_address;
+  send_address.sin_family = AF_INET; // IPv4
+  send_address.sin_addr.s_addr =
+    ((sockaddr_in*) (address_result->ai_addr))->sin_addr.s_addr;  // IP address
+  send_address.sin_port = htons(port); // port from the command line
+
+  freeaddrinfo(address_result);
+
+  return send_address;
+}
+
+};
 
 SocketUDP::SocketUDP(uint16_t port)
 {
@@ -39,6 +72,31 @@ SocketUDP::SocketUDP(uint16_t port)
 
   if (err)
     throw std::runtime_error("failed to bind the socket");
+}
+
+SocketUDP::SocketUDP(uint16_t port, const char* host_ip, uint16_t host_port)
+{
+  fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+  if (fd < 0)
+    throw std::runtime_error("failed to create a socket.");
+
+  sockaddr_in server_address;
+
+  // IPv4
+  server_address.sin_family = AF_INET;
+  // listening on all interfaces
+  server_address.sin_addr.s_addr = htonl(INADDR_ANY);
+  server_address.sin_port = htons(port);
+
+  // Bind the socket to an address.
+  int err = bind(fd, (sockaddr*)&server_address,
+                 (socklen_t)sizeof(server_address));
+
+  if (err)
+    throw std::runtime_error("failed to bind the socket");
+
+  client_addr = get_send_address(host_ip, host_port);
 }
 
 // General purpose message receiving function.

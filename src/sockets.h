@@ -18,6 +18,8 @@ class SocketUDP {
 
 public:
   SocketUDP(uint16_t port);
+  // Construct a socket with a chosen adress to listen on and send to.
+  SocketUDP(uint16_t port, const char* host_ip, uint16_t host_port);  
   ~SocketUDP() noexcept;
   size_t receive_message(void* buffer, size_t max_length) const;
   void send_message(const void* message, size_t length) const;

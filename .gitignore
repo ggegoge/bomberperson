@@ -1,6 +1,7 @@
 
 compile_commands.json
 *~
+*.o
 .dir-locals.el
 test*
 
