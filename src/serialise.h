@@ -113,6 +113,7 @@ public:
   {
     uint8_t bytes[sizeof(T)];
     *(T*)(bytes) = hton<T>(item);
+
     for (uint8_t byte : bytes)
       out.push_back(byte);
   }
@@ -127,6 +128,7 @@ public:
   void ser(const std::string& str)
   {
     ser<uint8_t>(str.length());
+
     for (char c : str)
       out.push_back(c);
   }

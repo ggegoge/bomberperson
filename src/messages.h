@@ -92,7 +92,6 @@ struct PlayerMoved {
   Position position;
 };
 
-// TODO: consider having possibility of reading a variant
 using EventVar =
   std::variant<struct BombPlaced, struct BombExploded, struct PlayerMoved,
         struct BlockPlaced>;
@@ -165,7 +164,10 @@ struct Game {
   std::map<PlayerId, server_messages::Player> players;
   std::map<PlayerId, Position> player_positions;
   List<Position> blocks;
-
+  // todo: better namespacing would be useful, namespace robots for the commons
+  List<server_messages::Bomb> bombs;
+  List<Position> explosions;
+  std::map<PlayerId, Score> scores;
 };
 
 using DisplayMessage = std::variant<struct Lobby, struct Game>;

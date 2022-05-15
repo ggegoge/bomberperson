@@ -69,6 +69,12 @@ Ser& operator<<(Ser& ser, const Position& position)
   return ser << position.first << position.second;
 }
 
+Ser& operator<<(Ser& ser, const struct Bomb& b)
+{
+  std::cerr << "bomb!\n";
+  return ser << b.position << b.timer;
+}
+
 Ser& operator<<(Ser& ser, const struct BombPlaced& bp)
 {
   return ser << bp.id << bp.position;
@@ -107,7 +113,8 @@ Ser& operator<<(Ser& ser, const struct Lobby& l)
 Ser& operator<<(Ser& ser, const struct Game& g)
 {
   return ser << g.server_name << g.size_x << g.size_y << g.game_length << g.turn
-         << g.players << g.player_positions << g.blocks;
+             << g.players << g.player_positions << g.blocks << g.bombs
+             << g.explosions << g.scores;
 }
 
 }; // namespace anonymous

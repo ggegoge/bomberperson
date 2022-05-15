@@ -129,7 +129,7 @@ int main(int argc, char* argv[])
     sock.send_message(bytes);
     ser.clean();
     
-  } else if (opt == "display") {
+  } else if (opt == "lobby") {
     using namespace display_messages;
     DisplayMessage msg;
     struct Lobby l;
@@ -146,10 +146,63 @@ int main(int argc, char* argv[])
     struct server_messages::Player p2;
     p2.name = "ja";
     p2.address = "4.3.2.1:2137";
+    struct server_messages::Player p3;
+    p3.name = "pojscie spac";
+    p3.address = "5.7.3.8:0001";    
     l.players.insert({1, p1});
     l.players.insert({2, p2});
-
+    l.players.insert({3, p3});
+    
     msg = l;
+    ser.clean();
+    ser << msg;
+    bytes = ser.to_bytes();
+    cout << bytes << "\n";
+    sock.send_message(bytes);
+    ser.clean();
+  } else if (opt == "game") {
+    using namespace display_messages;
+    DisplayMessage msg;
+    struct Game g;
+    g.server_name = "gniox";
+    g.size_x = 10;
+    g.size_y = 10;
+    g.game_length = 0;
+    g.turn = 11;
+
+    struct server_messages::Player p1;
+    p1.name = "kot";
+    p1.address = "1.2.3.4:0001";
+    struct server_messages::Player p2;
+    p2.name = "ja";
+    p2.address = "4.3.2.1:2137";
+    struct server_messages::Player p3;
+    p3.name = "pójście spać";
+    p3.address = "5.7.3.8:0001";    
+
+    g.players.insert({1, p1});
+    g.players.insert({2, p2});
+    g.players.insert({3, p3});
+
+    g.player_positions.insert({1, {1,1}});
+    g.player_positions.insert({2, {4,4}});
+    g.player_positions.insert({3, {7,7}});
+
+    g.blocks = {{0,0}, {5, 5}};
+
+    struct server_messages::Bomb b;
+    b.position = {9,9};
+    b.timer = 3;
+
+    g.bombs = {b};
+
+    g.explosions = {{1, 7}, {7, 1}};
+    
+    g.scores.insert({1, 10});
+    g.scores.insert({2, 0});
+    g.scores.insert({3, 55});
+
+    msg = g;
     ser.clean();
     ser << msg;
     bytes = ser.to_bytes();
