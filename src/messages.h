@@ -1,4 +1,5 @@
 // Messages sent in our protocol.
+// TODO: moving implementation to .cc?
 
 #ifndef _MESSAGES_H_
 #define _MESSAGES_H_
@@ -92,18 +93,12 @@ struct PlayerMoved {
   Position position;
 };
 
-using EventVar= std::variant<struct BombPlaced, struct BombExploded,
+// TODO: consider having possibility of reading a variant 
+using EventVar = std::variant<struct BombPlaced, struct BombExploded,
                              struct PlayerMoved, struct BlockPlaced>;
 
-struct Event {
-  EventType ev_type;
-
-  std::variant<struct BombPlaced, struct BombExploded,
-               struct PlayerMoved, struct BlockPlaced> event;
-};
-
 enum ServerMessage {
-  Hello, AcceptedPlayer, GameStarted, TurnE, GameEnded
+  Hello, AcceptedPlayer, GameStarted, Turn, GameEnded
 };
 
 // Hello
@@ -131,7 +126,7 @@ struct GameStarted {
 
 struct Turn {
   uint16_t turn;
-  List<Event> events;
+  List<EventVar> events;
 };
 
 struct GameEnded {
@@ -162,8 +157,7 @@ inline Ser& operator<<(Ser& ser, const struct server_message::GameStarted& gs)
 
 inline Ser& operator<<(Ser& ser, const struct server_message::Turn& turn)
 {
-  // std::cerr << "operator<< for turn...\n";
-  return ser << server_message::TurnE << turn.turn << turn.events;
+  return ser << server_message::Turn << turn.turn << turn.events;
 }
 
 inline Ser& operator<<(Ser& ser, const struct server_message::GameEnded& ge)
@@ -173,65 +167,31 @@ inline Ser& operator<<(Ser& ser, const struct server_message::GameEnded& ge)
 
 inline Ser& operator<<(Ser& ser, const server_message::Position& position)
 {
-  std::cerr << "pos\n";
   return ser << position.first << position.second;
 }
 
 // All event types may be serialised!
 inline Ser& operator<<(Ser& ser, const struct server_message::BombPlaced& bp)
 {
-  return ser << bp.id << bp.position;
+  return ser << server_message::BombPlaced << bp.id << bp.position;
 }
 
 inline Ser& operator<<(Ser& ser, const struct server_message::BombExploded& be)
 {
-  return ser << be.id << be.robots_destroyed << be.blocks_destroyed;
+  return ser << server_message::BombExploded << be.id
+             << be.robots_destroyed << be.blocks_destroyed;
 }
 
 inline Ser& operator<<(Ser& ser, const struct server_message::PlayerMoved& pm)
 {
-  return ser << pm.id << pm.position;
+  return ser << server_message::PlayerMoved << pm.id << pm.position;
 }
 
 inline Ser& operator<<(Ser& ser, const struct server_message::BlockPlaced& bp)
 {
-  return ser << bp.position;
+  return ser << server_message::BlockPlaced << bp.position;
 }
 
-// Event serialisation
-inline Ser& operator<<(Ser& ser, const struct server_message::Event& ev)
-{
-  using namespace server_message;
-  ser << ev.ev_type;
-
-  // todo: use std::visit? and keep it variant only, no ev_type shit?
-  switch (ev.ev_type) {
-  case server_message::BombPlaced: {
-    struct BombPlaced bp = std::get<struct BombPlaced>(ev.event);
-    return ser << bp;
-  }
-    
-  case server_message::BombExploded: {
-    struct BombExploded be = std::get<struct BombExploded>(ev.event);
-    return ser << be;
-  }
-
-  case server_message::PlayerMoved: {
-    struct PlayerMoved pm = std::get<struct PlayerMoved>(ev.event);
-    return ser << pm;
-  }
-
-  case server_message::BlockPlaced: {
-    struct BlockPlaced bp = std::get<struct BlockPlaced>(ev.event);
-    return ser << bp;
-  }
-
-  };
-
-  return ser;
-}
-
-// todo!
 inline Ser& operator<<(Ser& ser, const server_message::EventVar& ev)
 {
   return std::visit([&ser] <typename T> (const T& x) -> Ser& {

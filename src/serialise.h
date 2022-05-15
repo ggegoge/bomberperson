@@ -122,7 +122,6 @@ public:
   template <typename T>
   void ser(const T& enum_item) requires std::is_enum<T>::value
   {
-    // std::cerr << "enum = " << (int)enum_item << "\n";
     ser((uint8_t)enum_item);
   }
   
@@ -156,7 +155,6 @@ public:
   template <typename T1, typename T2>
   void ser(const std::pair<T1, T2>& pair)
   {
-    std::cerr << "pos in ser\n";
     *this << pair.first << pair.second;
   }
   

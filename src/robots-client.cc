@@ -104,31 +104,28 @@ int main(int argc, char* argv[])
     ser.clean();
 
     // sample Turn: PMoved, BoPlaced, Bexploded
-    struct Event ev1, ev2, ev3;
+    EventVar e1, e2, e3;
     
     struct PlayerMoved pm;
     pm.id = 7;
     pm.position = {21, 37};
-    ev1.ev_type = PlayerMoved;
-    ev1.event = pm;
+    e1 = pm;
 
     struct BombPlaced bp;
     bp.id = 113;
     bp.position = {73, 12};
-    ev2.ev_type = BombPlaced;
-    ev2.event = bp;
+    e2 = bp;
 
     struct BombExploded be;
     be.id = 77;
     be.robots_destroyed = {1, 2, 3, 4, 5, 6, 7, 8, 9};
     be.blocks_destroyed = {{0, 0}, {1,1}, {2,2}};
-    ev3.ev_type = BombExploded;
-    ev3.event = be;
+    e3 = be;
     
-    vector<struct Event> events = {ev1, ev2, ev3};
+    vector<EventVar> evs = {e1, e2, e3};
     struct Turn turn;
     turn.turn = 2137;
-    turn.events = events;
+    turn.events = evs;
 
     ser.clean();
     ser << turn;
