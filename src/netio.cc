@@ -33,6 +33,11 @@ void ReaderUDP::recv_from_sock(udp::socket& sock)
   buff_size = sock.receive(boost::asio::buffer(buff));
 }
 
+void ReaderUDP::recv_from_sock(udp::socket& sock, udp::endpoint& endp)
+{
+  buff_size = sock.receive_from(boost::asio::buffer(buff), endp);
+}
+
 std::vector<uint8_t> ReaderTCP::read(size_t nbytes)
 {
   std::vector<uint8_t> bytes(nbytes);

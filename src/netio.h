@@ -25,6 +25,9 @@ public:
   
   void recv_from_sock(boost::asio::ip::udp::socket& sock);
 
+  void recv_from_sock(boost::asio::ip::udp::socket& sock,
+                      boost::asio::ip::udp::endpoint& endp);
+
   std::vector<uint8_t> read(size_t nbytes);
 };
 

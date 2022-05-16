@@ -13,7 +13,10 @@
 #include <boost/asio/ip/udp.hpp>
 #include <boost/program_options.hpp>
 #include <boost/program_options/errors.hpp>
-#include <math.h>
+#include <map>
+#include <thread>
+#include <type_traits>
+#include <functional>
 #include <regex>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +25,7 @@
 #include <iostream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace po = boost::program_options;
@@ -82,14 +86,15 @@ public:
     cout << "gui_ip=" << gui_ip << ", " << "gui_port=" << gui_port << "\n";
     udp::resolver udp_resolver(io_ctx);
     gui = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
-    gui_socket.connect(gui);
 
     auto [serv_ip, serv_port] = get_addr(server_addr);
     cout << "serv_ip=" << serv_ip << ", " << "serv_port=" << serv_port << "\n";
     tcp::resolver tcp_resolver(io_ctx);
     server = *tcp_resolver.resolve(serv_ip, serv_port, resolver_base::numeric_service);
 
+    // todo: move to separate functions, innit?
     server_socket.connect(server);
+    gui_socket.connect(gui);
   }
 
   // test whether we can say hello through both of out sockets
