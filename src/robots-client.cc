@@ -4,8 +4,12 @@
 #include "serialise.h"
 #include "messages.h"
 
+#include "dbg.h"
+
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/connect.hpp>
 #include <boost/asio/ip/resolver_base.hpp>
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/program_options/errors.hpp>
 #include <cstddef>
@@ -92,6 +96,8 @@ void send_test_boost(uint16_t port, string host, uint16_t host_port,
                      const string& opt);
 void recv_test_boost(SocketUDP& sock, const string& opt);
 
+void send_tcp(uint16_t port, string host, uint16_t host_port, const string& opt);
+
 int main(int argc, char* argv[])
 {
   if (argc < 6) {
@@ -104,25 +110,204 @@ int main(int argc, char* argv[])
   uint16_t port = std::stol(argv[1]);
   char* host = argv[2];
   uint16_t host_port = std::stol(argv[3]);
-  SocketUDP sock(port, host, host_port);
 
   Serialiser ser;
   std::vector<uint8_t> bytes;
   string send_recv(argv[4]);
-  std::string opt(argv[5]);
+  std::string optmsg(argv[5]);
 
-  if (send_recv == "send")
-    send_test(sock, opt);
-  else if (send_recv == "recv")
-    recv_test(sock, opt);
-  else
+  if (send_recv == "send") {
+    send_tcp(port, host, host_port, optmsg);
+    // send_test_boost(port, host, host_port, optmsg);
+    // SocketUDP sock(port, host, host_port);
+    // cout << "client ip = " << sock.client_ip() << "\n";
+    // send_test(sock, optmsg);
+  } else if (send_recv == "recv") {
+    SocketUDP sock(port, host, host_port);
+    cout << "client ip = " << sock.client_ip() << "\n";
+    recv_test(sock, optmsg);
+  }  else
     cout << "send/recv must be either send or recv\n";
 
-  
   return 0;
 }
 
-#include "dbg.h"
+using boost::asio::ip::tcp;
+void send_tcp(uint16_t port, string host, uint16_t host_port, const string& opt)
+{
+  cout << port << " " << host << " " << host_port << " " << opt << "\n";
+
+  boost::asio::io_context io_context;
+  tcp::resolver resolver(io_context);
+
+  tcp::endpoint endpoint = *resolver.resolve(
+    host, boost::lexical_cast<std::string>(host_port)
+    , asio::ip::resolver_base::numeric_service
+    );
+
+  // tcp::resolver::results_type endpoint = resolver.resolve(
+  //   host, boost::lexical_cast<std::string>(host_port)
+  //   , asio::ip::resolver_base::numeric_service
+  //   );
+  
+  cout << "ip=" << endpoint.address() << ":" << endpoint.port() << "\n";
+  tcp::socket socket(io_context);
+
+  // tcp::no_delay option(true);
+  // socket.set_option(option);
+
+  cout << "connecting\n";
+  // boost::asio::connect(socket, endpoint);
+  
+  socket.connect(endpoint);
+  
+  Serialiser ser;
+  vector<uint8_t> bytes;
+  if (opt == "server") {
+    using namespace server_messages;
+
+    ServerMessage msg;
+
+    // sample Hello messagea
+    struct Hello hello;
+    hello.server_name = "goowno";
+    hello.players_count = 21;
+    hello.size_x = 12;
+    hello.size_y = 34;
+    hello.game_length = 2137;
+    hello.explosion_radius = 13;
+    hello.bomb_timer = 4;
+
+    msg = hello;
+    ser << msg;
+    bytes = ser.to_bytes();
+    cout << bytes << "\n";
+    // sock.send_message(bytes);
+    // socket.send_to(boost::asio::buffer(bytes), receiver_endpoint);
+    socket.send(boost::asio::buffer(bytes));
+    ser.clean();
+
+  } else if (opt == "client") {
+    using namespace client_messages;
+    using namespace server_messages;
+
+    // wyślemy Join("siemkaaa") -> [0, 8, s, i, ..., a]
+    struct Join j("siemkaaa");
+    ClientMessage send_msg = j;
+    ser << send_msg;
+    bytes = ser.drain_bytes();
+    cout << bytes << "\n";
+    socket.send(boost::asio::buffer(bytes));
+    ReaderTCPboost r(socket);
+    Deserialiser<ReaderTCPboost> deser(r);
+    ServerMessage msg;
+    deser >> msg;
+    cout << msg;
+  }
+}
+
+// kurwaaaaaa czemu nie przychodiz hsjshjsjhsjndjn
+using boost::asio::ip::udp;
+void send_test_boost(uint16_t port, string host, uint16_t host_port,
+                     const string& opt)
+{
+  boost::asio::io_context io_context;
+  udp::resolver resolver(io_context);
+
+  // udp::resolver::query query(// udp::v4(),
+  //   host, boost::lexical_cast<std::string>(host_port));
+
+  cout << port << " " << host << " " << host_port << " " << opt << "\n";
+
+  cout << "resolvin...\n";
+  // udp::endpoint receiver_endpoint = *resolver.resolve(query).begin();
+  udp::endpoint receiver_endpoint =
+    *resolver.resolve(// udp::v4(),
+      host, boost::lexical_cast<std::string>(host_port)
+      , asio::ip::resolver_base::numeric_service
+    );
+
+  // udp::resolver::results_type endpoints = resolver.resolve(// udp::v4(),
+  //     host, boost::lexical_cast<std::string>(host_port)
+  //     , asio::ip::resolver_base::numeric_service
+  //   );
+  
+  cout << "resolved to: " << receiver_endpoint.address() << ":"
+       << receiver_endpoint.port() << "\n";
+
+  // receiver_endpoint.port(host_port);
+  cout << "binding a sock\n";
+  udp::socket socket(io_context, udp::endpoint(udp::v6(), port));
+
+  cout << "opening a connection\n";
+  socket.connect(receiver_endpoint);
+
+  // boost::asio::connect(socket, endpoints);
+  
+  Serialiser ser;
+  vector<uint8_t> bytes;
+
+  if (opt == "server") {
+    using namespace server_messages;
+
+    ServerMessage msg;
+
+    // sample Hello messagea
+    struct Hello hello;
+    hello.server_name = "goowno";
+    hello.players_count = 21;
+    hello.size_x = 12;
+    hello.size_y = 34;
+    hello.game_length = 2137;
+    hello.explosion_radius = 13;
+    hello.bomb_timer = 4;
+
+    msg = hello;
+    ser << msg;
+    bytes = ser.to_bytes();
+    cout << bytes << "\n";
+    // sock.send_message(bytes);
+    // socket.send_to(boost::asio::buffer(bytes), receiver_endpoint);
+    socket.send(boost::asio::buffer(bytes));
+    ser.clean();
+
+  } else if (opt == "lobby") {
+    using namespace display_messages;
+    cout << "display via sockkk\n";
+    DisplayMessage msg;
+    struct Lobby l;
+    l.server_name = "GNIOX";
+    l.players_count = 11;
+    l.size_x = 1234;
+    l.size_y = 1;
+    l.game_length = 0;
+    l.explosion_radius = 11;
+    l.bomb_timer = 17;
+    struct server_messages::Player p1;
+    p1.name = "KOT";
+    p1.address = "1.2.3.4:0001";
+    struct server_messages::Player p2;
+    p2.name = "JA";
+    p2.address = "4.3.2.1:2137";
+    struct server_messages::Player p3;
+    p3.name = "pojście spać!!!";
+    p3.address = "5.7.3.8:0001";
+    l.players.insert({1, p1});
+    l.players.insert({2, p2});
+    l.players.insert({3, p3});
+
+    msg = l;
+    ser.clean();
+    ser << msg;
+    bytes = ser.to_bytes();
+    cout << bytes << "\n";
+    // socket.send_to(boost::asio::buffer(bytes), receiver_endpoint);
+    socket.send(boost::asio::buffer(bytes));
+    ser.clean();
+
+  }
+}
+
 void recv_test(SocketUDP& sock, const string& opt)
 {
   ReaderUDP rd;
@@ -209,10 +394,9 @@ void send_test(SocketUDP& sock, const string& opt)
 
     msg = hello;
     ser << msg;
-    bytes = ser.to_bytes();
+    bytes = ser.drain_bytes();
     cout << bytes << "\n";
     sock.send_message(bytes);
-    ser.clean();
 
     // sample Turn: PMoved, BoPlaced, Bexploded
     EventVar e1, e2, e3;
@@ -241,10 +425,9 @@ void send_test(SocketUDP& sock, const string& opt)
     msg = turn;
     ser.clean();
     ser << msg;
-    bytes = ser.to_bytes();
+    bytes = ser.drain_bytes();
     cout << bytes << "\n";
     sock.send_message(bytes);
-    ser.clean();
 
   } else if (opt == "lobby") {
     using namespace display_messages;

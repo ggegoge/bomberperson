@@ -8,6 +8,8 @@
 #define _SERIALISE_H_
 
 // There are problems on macos with changing the byte order.
+#include <sys/types.h>
+#include <type_traits>
 #ifdef __MACH__
 #  include <libkern/OSByteOrder.h>
 #  define htobe64(x) OSSwapHostToBigInt64(x)
@@ -31,6 +33,7 @@ template <typename T>
 concept Readable = requires (T x, size_t nbytes)
 {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
+  {x.eof()} -> std::convertible_to<bool>;
 };
 
 // Byte order.
@@ -148,6 +151,14 @@ public:
   std::vector<uint8_t> to_bytes() const
   {
     return out;
+  }
+
+  // This combines the action of clean() and to_bytes() as it is often useful.
+  std::vector<uint8_t> drain_bytes()
+  {
+    std::vector<uint8_t> empty;
+    std::swap(empty, out);
+    return empty;
   }
 
   template <typename T>

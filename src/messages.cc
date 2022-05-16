@@ -432,3 +432,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, input_messages::InputMessage
 template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, ServerMessage&);
 template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, ClientMessage&);
 template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, InputMessage&);
+
+template Deserialiser<ReaderTCPboost>& operator>>(Deserialiser<ReaderTCPboost>&, ServerMessage&);
+template Deserialiser<ReaderTCPboost>& operator>>(Deserialiser<ReaderTCPboost>&, ClientMessage&);
+template Deserialiser<ReaderTCPboost>& operator>>(Deserialiser<ReaderTCPboost>&, InputMessage&);

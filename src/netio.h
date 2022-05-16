@@ -5,6 +5,7 @@
 #ifndef _NETIO_H_
 #define _NETIO_H_
 
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ip/udp.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -57,6 +58,16 @@ class ReaderTCP {
   SocketTCP& sock;
 public:
   ReaderTCP(SocketTCP& sock) : sock(sock) {}
+  std::vector<uint8_t> read(size_t nbytes);
+};
+
+class ReaderTCPboost {
+  boost::asio::ip::tcp::socket& sock;
+public:
+  ReaderTCPboost(boost::asio::ip::tcp::socket& sock) : sock(sock) {}
+
+  bool eof() const;
+
   std::vector<uint8_t> read(size_t nbytes);
 };
 
