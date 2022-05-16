@@ -148,3 +148,25 @@ SocketUDP::~SocketUDP() noexcept
 {
   ::close(fd);
 }
+
+// Reading
+
+std::vector<uint8_t> ReaderUDP_c::read(size_t nbytes)
+{
+  if (pos + nbytes > buff_size)
+    throw std::runtime_error("Not enough bytes in the buffer!");
+
+  std::vector<uint8_t> bytes(buff + pos, buff + pos + nbytes);
+  pos += nbytes;
+  return bytes;
+}
+
+bool ReaderUDP_c::eof() const
+{
+  return pos == buff_size;
+}
+
+void ReaderUDP_c::recv_from_sock(SocketUDP& sock)
+{
+  buff_size = sock.receive_message(buff, UDP_DATAGRAM_SIZE);
+}

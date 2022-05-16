@@ -1,16 +1,14 @@
 // Module with all things related to serialising and deserialising data.
 // It serialises data types according with the robots protocol.
-// In this module only basic serialisation is handled but it is extensible --
-// if one wanted to serialise a struct then they could do another overload
-// of the operator<< (and this is precisely what I do in the messages module).
+// In this module only basic serialisation is handled but it is extensible
+// to be used with other complex structures. It relies heavily on overloading
+// the >> and << operators so if you provide your overloaded versions of those
+// for different types then this can work.
 
 #ifndef _SERIALISE_H_
 #define _SERIALISE_H_
 
 // There are problems on macos with changing the byte order.
-#include <iostream>
-#include <sys/types.h>
-#include <type_traits>
 #ifdef __MACH__
 #  include <libkern/OSByteOrder.h>
 #  define htobe64(x) OSSwapHostToBigInt64(x)
@@ -19,7 +17,9 @@
 #  include <endian.h>
 #endif // __MACH__
 
+// htonl and htons
 #include <arpa/inet.h>
+
 #include <concepts>
 #include <vector>
 #include <map>
@@ -34,18 +34,20 @@ template <typename T>
 concept Readable = requires (T x, size_t nbytes)
 {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
-  {x.eof()} -> std::convertible_to<bool>;
+  // {x.eof()} -> std::convertible_to<bool>;
 };
 
+// todo: comparing sizes instead of same_as? perhaps someone gives us an int
+// and that should be fine?
 // Byte order.
 template <typename T>
 constexpr T hton(T num)
 {
-  if constexpr (std::is_same_v<T, uint64_t>)
+  if constexpr (std::same_as<T, uint64_t>)
     return be64toh(num);
-  else if constexpr (std::is_same_v<T, uint32_t>)
+  else if constexpr (std::same_as<T, uint32_t>)
     return htonl(num);
-  else if constexpr (std::is_same_v<T, uint16_t>)
+  else if constexpr (std::same_as<T, uint16_t>)
     return htons(num);
   else
     return num;
@@ -64,83 +66,7 @@ constexpr T ntoh(T num)
     return num;
 }
 
-template <Readable R>
-class Deserialiser {
-  R r;
-
-public:
-  Deserialiser(const R& r) : r(r) {}
-  Deserialiser(R&& r) : r(std::move(r)) {}
-
-  template <typename T>
-  void deser(T& item) requires (!std::is_enum_v<T>)
-  {
-    std::vector<uint8_t> buff = r.read(sizeof(T));
-    item = ntoh<T>(*(T*)(buff.data()));
-  }
-
-  template <typename T>
-  void deser(T& enum_item) requires std::is_enum_v<T>
-  {
-    uint8_t item;
-    deser(item);
-    // widening conversion
-    enum_item = (T)item;
-  }
-  
-  void deser(std::string& str)
-  {
-    uint8_t len;
-    deser(len);
-    std::vector<uint8_t> bytes = r.read(len);
-    str.assign((char*)bytes.data(), len);
-  }
-
-  template <typename T>
-  void deser(std::vector<T>& seq)
-  {
-    uint32_t len;
-    deser(len);
-    // seq = std::vector<T>(len);
-
-    // for (uint32_t i = 0; i < len; ++i)
-    //   *this >> seq.at(i);
-
-    for (uint32_t i = 0; i < len; ++i) {
-      T x;
-      *this >> x;
-      seq.push_back(x);
-    }
-  }
-
-  template <typename K, typename V>
-  void deser(std::map<K, V>& map)
-  {
-    uint32_t len;
-    deser(len);
-
-    for (uint32_t i = 0; i < len; ++i) {
-      K k;
-      V v;
-      *this >> k >> v;
-      map.insert({k, v});
-    }
-  }
-
-  template <typename T1, typename T2>
-  void deser(std::pair<T1, T2>& pair)
-  {
-    *this >> pair.first >> pair.second;
-  }
-  
-  template <typename T>
-  Deserialiser& operator>>(T& item)
-  {
-    deser(item);
-    return *this;
-  }
-};
-
+// Class for data serialisation.
 class Serialiser {
   std::vector<uint8_t> out;
 public:
@@ -162,7 +88,10 @@ public:
     return empty;
   }
 
-  template <typename T>
+  // The integral constraint is here so that this function does not get called
+  // on non-integral types thus it obliges the programmer to provide their
+  // overloads for more complex types and structures.
+  template <std::integral T>
   void ser(const T& item) requires (!std::is_enum_v<T>)
   {
     uint8_t bytes[sizeof(T)];
@@ -217,6 +146,72 @@ public:
   Serialiser& operator<<(const T& item)
   {
     ser(item);
+    return *this;
+  }
+};
+
+template <Readable R>
+class Deserialiser {
+  R r;
+
+public:
+  Deserialiser(const R& r) : r(r) {}
+  Deserialiser(R&& r) : r(std::move(r)) {}
+
+  // Note: we do not offer a function for deserialising enums as it is quite
+  // dangerous considering there is no range check done on them upon conversion.
+  template <std::integral T>
+  void deser(T& item) requires (!std::is_enum_v<T>)
+  {
+    std::vector<uint8_t> buff = r.read(sizeof(T));
+    item = ntoh<T>(*(T*)(buff.data()));
+  }
+  
+  void deser(std::string& str)
+  {
+    uint8_t len;
+    deser(len);
+    std::vector<uint8_t> bytes = r.read(len);
+    str.assign((char*)bytes.data(), len);
+  }
+
+  template <typename T>
+  void deser(std::vector<T>& seq)
+  {
+    uint32_t len;
+    deser(len);
+
+    for (uint32_t i = 0; i < len; ++i) {
+      T x;
+      *this >> x;
+      seq.push_back(x);
+    }
+  }
+
+  template <typename K, typename V>
+  void deser(std::map<K, V>& map)
+  {
+    uint32_t len;
+    deser(len);
+
+    for (uint32_t i = 0; i < len; ++i) {
+      K k;
+      V v;
+      *this >> k >> v;
+      map.insert({k, v});
+    }
+  }
+
+  template <typename T1, typename T2>
+  void deser(std::pair<T1, T2>& pair)
+  {
+    *this >> pair.first >> pair.second;
+  }
+  
+  template <typename T>
+  Deserialiser& operator>>(T& item)
+  {
+    deser(item);
     return *this;
   }
 };

@@ -17,13 +17,13 @@
 #include <iostream>
 #include <unistd.h>
 
-namespace
-{
-
 using namespace client_messages;
 using namespace server_messages;
 using namespace input_messages;
 using namespace display_messages;
+
+namespace
+{
 
 Serialiser& operator<<(Serialiser& ser, const struct Join& j)
 {
