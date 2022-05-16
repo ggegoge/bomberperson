@@ -113,7 +113,7 @@ Serialiser& operator<<(Serialiser& ser, const struct BlockPlaced& bp)
 Serialiser& operator<<(Serialiser& ser, const EventVar& ev)
 {
   uint8_t index = static_cast<uint8_t>(ev.index());
-  return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
+  return std::visit([&ser, index] <typename T> (const T& x) -> Serialiser& {
     return ser << index << x;
   }, ev);
 }
@@ -137,7 +137,7 @@ Serialiser& operator<<(Serialiser& ser, const struct Game& g)
 Serialiser& operator<<(Serialiser& ser, const ServerMessage& msg)
 {
   uint8_t index = static_cast<uint8_t>(msg.index());
-  return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
+  return std::visit([&ser, index] <typename T> (const T& x) -> Serialiser& {
     return ser << index << x;
   }, msg);
 }
@@ -145,7 +145,7 @@ Serialiser& operator<<(Serialiser& ser, const ServerMessage& msg)
 Serialiser& operator<<(Serialiser& ser, const ClientMessage& msg)
 {
   uint8_t index = static_cast<uint8_t>(msg.index());
-  return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
+  return std::visit([&ser, index] <typename T> (const T& x) -> Serialiser& {
     return ser << index << x;
   }, msg);
 }
@@ -153,7 +153,7 @@ Serialiser& operator<<(Serialiser& ser, const ClientMessage& msg)
 Serialiser& operator<<(Serialiser& ser, const DisplayMessage& msg)
 {
   uint8_t index = static_cast<uint8_t>(msg.index());
-  return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
+  return std::visit([&ser, index] <typename T> (const T& x) -> Serialiser& {
     return ser << index << x;
   }, msg);
 }
@@ -161,7 +161,7 @@ Serialiser& operator<<(Serialiser& ser, const DisplayMessage& msg)
 Serialiser& operator<<(Serialiser& ser, const InputMessage& msg)
 {
   uint8_t index = static_cast<uint8_t>(msg.index());
-  return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
+  return std::visit([&ser, index] <typename T> (const T& x) -> Serialiser& {
     return ser << index << x;
   }, msg);
 }
