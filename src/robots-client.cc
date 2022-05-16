@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
   uint16_t host_port = std::stol(argv[3]);
   SocketUDP sock(port, host, host_port);
 
-  Ser ser;
+  Serialiser ser;
   std::vector<uint8_t> bytes;
   string send_recv(argv[4]);
   std::string opt(argv[5]);
@@ -61,7 +61,7 @@ void recv_test(SocketUDP& sock, const string& opt)
   ReaderUDP rd;
   rd.recv_from_sock(sock);
 
-  Deser<ReaderUDP> deser{rd};
+  Deserialiser<ReaderUDP> deser{rd};
 
   if (opt == "client") {
     // using namespace client_messages;
@@ -82,7 +82,7 @@ void recv_test(SocketUDP& sock, const string& opt)
 
 void send_test(SocketUDP& sock, const string& opt)
 {
-  Ser ser;
+  Serialiser ser;
   std::vector<uint8_t> bytes;
 
     if (opt == "client") {

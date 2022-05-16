@@ -1,5 +1,8 @@
 // Module with all things related to serialising and deserialising data.
 // It serialises data types according with the robots protocol.
+// In this module only basic serialisation is handled but it is extensible --
+// if one wanted to serialise a struct then they could do another overload
+// of the operator<< (and this is precisely what I do in the messages module).
 
 #ifndef _SERIALISE_H_
 #define _SERIALISE_H_
@@ -58,12 +61,12 @@ constexpr T ntoh(T num)
 }
 
 template <Readable R>
-class Deser {
+class Deserialiser {
   R r;
 
 public:
-  Deser(const R& r) : r(r) {}
-  Deser(R&& r) : r(std::move(r)) {}
+  Deserialiser(const R& r) : r(r) {}
+  Deserialiser(R&& r) : r(std::move(r)) {}
 
   template <typename T>
   void deser(T& item) requires (!std::is_enum_v<T>)
@@ -127,14 +130,14 @@ public:
   }
   
   template <typename T>
-  Deser& operator>>(T& item)
+  Deserialiser& operator>>(T& item)
   {
     deser(item);
     return *this;
   }
 };
 
-class Ser {
+class Serialiser {
   std::vector<uint8_t> out;
 public:
   void clean()
@@ -199,7 +202,7 @@ public:
   }
   
   template <typename T>
-  Ser& operator<<(const T& item)
+  Serialiser& operator<<(const T& item)
   {
     ser(item);
     return *this;

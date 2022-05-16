@@ -34,6 +34,7 @@ public:
 // Not sure yet how exactly will I do this. Perhaps I will merge this with
 // the SocketTCP as it may be much easier then have this with a reference to
 // the socket? As writing will be done through the socket innit.
+// TODO
 class ReaderTCP {
   SocketTCP& sock;
 public:

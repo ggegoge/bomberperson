@@ -11,6 +11,7 @@
 #include <vector>
 
 // Declaration of a basic UDP socket based on the C-interface.
+// TODO: boost?
 class SocketUDP {
   int fd;
   sockaddr_in client_addr;
@@ -28,6 +29,7 @@ public:
   void close();
 };
 
+// TODO
 class SocketTCP {
 public:
   void send_message(const std::vector<uint8_t>& bytes) const;

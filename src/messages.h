@@ -194,13 +194,13 @@ using InputMessage =
 // Main functions I'd advise (to meself) that I use. Do I need them though?
 // perhaps they'r enot really necessary here...
 // although having the variant might be nice --> handling with visits?
-Ser& operator<<(Ser& ser, const client_messages::ClientMessage& msg);
-Ser& operator<<(Ser& ser, const server_messages::ServerMessage& msg);
-Ser& operator<<(Ser& ser, const display_messages::DisplayMessage& msg);
-Ser& operator<<(Ser& ser, const input_messages::InputMessage& msg);
+Serialiser& operator<<(Serialiser& ser, const client_messages::ClientMessage& msg);
+Serialiser& operator<<(Serialiser& ser, const server_messages::ServerMessage& msg);
+Serialiser& operator<<(Serialiser& ser, const display_messages::DisplayMessage& msg);
+Serialiser& operator<<(Serialiser& ser, const input_messages::InputMessage& msg);
 
 // Deserialisation is analogous...
 template <Readable R>
-Deser<R>& operator>>(Deser<R>& deser, server_messages::ServerMessage& msg);
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessage& msg);
 
 #endif  // _MESSAGES_H_
