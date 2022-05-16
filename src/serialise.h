@@ -8,6 +8,7 @@
 #define _SERIALISE_H_
 
 // There are problems on macos with changing the byte order.
+#include <iostream>
 #include <sys/types.h>
 #include <type_traits>
 #ifdef __MACH__

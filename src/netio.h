@@ -21,12 +21,12 @@ constexpr size_t UDP_DATAGRAM_SIZE = 65507;
 
 // This just serves as a readable byte buffer that can be filled with a chosen
 // UDP socket.
-class ReaderUDP {
+class ReaderUDP_c {
   size_t pos = 0;
   size_t buff_size = 0;
   uint8_t buff[UDP_DATAGRAM_SIZE];
 public:
-  ReaderUDP() {}
+  ReaderUDP_c() {}
 
   bool eof() const;
   
@@ -35,12 +35,12 @@ public:
   std::vector<uint8_t> read(size_t nbytes);
 };
 
-class ReaderUDPboost {
+class ReaderUDP {
   size_t pos = 0;
   size_t buff_size = 0;
   uint8_t buff[UDP_DATAGRAM_SIZE];
 public:
-  ReaderUDPboost() {}
+  ReaderUDP() {}
 
   bool eof() const;
   
@@ -54,17 +54,17 @@ public:
 // the SocketTCP as it may be much easier then have this with a reference to
 // the socket? As writing will be done through the socket innit.
 // TODO
-class ReaderTCP {
+class ReaderTCP_c {
   SocketTCP& sock;
 public:
-  ReaderTCP(SocketTCP& sock) : sock(sock) {}
+  ReaderTCP_c(SocketTCP& sock) : sock(sock) {}
   std::vector<uint8_t> read(size_t nbytes);
 };
 
-class ReaderTCPboost {
+class ReaderTCP {
   boost::asio::ip::tcp::socket& sock;
 public:
-  ReaderTCPboost(boost::asio::ip::tcp::socket& sock) : sock(sock) {}
+  ReaderTCP(boost::asio::ip::tcp::socket& sock) : sock(sock) {}
 
   bool eof() const;
 

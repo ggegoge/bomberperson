@@ -276,7 +276,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct BlockPlaced& bp)
 }
 
 template <Readable R>
-Deserialiser<R>& f(Deserialiser<R>& deser, EventVar& ev)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, EventVar& ev)
 {
   uint8_t kind;
   deser >> kind;
@@ -356,6 +356,7 @@ template <Readable R>
 Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessage& msg)
 {
   using namespace server_messages;
+  std::cerr << "deser of server msg\n";
   uint8_t kind;
   deser >> kind;
 
@@ -368,24 +369,28 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
     return deser;
   }
   case AcceptedPlayer: {
+    std::cerr << "kind -> ap\n";
     struct AcceptedPlayer ap;
     deser >> ap;
     msg = ap;
     return deser;
   }
   case GameStarted: {
+    std::cerr << "kind -> gs\n";
     struct GameStarted gs;
     deser >> gs;
     msg = gs;
     return deser;
   }
   case Turn: {
+    std::cerr << "kind -> turn\n";
     struct Turn turn;
     deser >> turn;
     msg = turn;
     return deser;
   }
   case GameEnded: {
+    std::cerr << "kind -> ge\n";
     struct GameEnded ge;
     deser >> ge;
     msg = ge;
@@ -433,6 +438,6 @@ template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, ServerMes
 template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, ClientMessage&);
 template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, InputMessage&);
 
-template Deserialiser<ReaderTCPboost>& operator>>(Deserialiser<ReaderTCPboost>&, ServerMessage&);
-template Deserialiser<ReaderTCPboost>& operator>>(Deserialiser<ReaderTCPboost>&, ClientMessage&);
-template Deserialiser<ReaderTCPboost>& operator>>(Deserialiser<ReaderTCPboost>&, InputMessage&);
+template Deserialiser<ReaderTCP>& operator>>(Deserialiser<ReaderTCP>&, ServerMessage&);
+template Deserialiser<ReaderTCP>& operator>>(Deserialiser<ReaderTCP>&, ClientMessage&);
+template Deserialiser<ReaderTCP>& operator>>(Deserialiser<ReaderTCP>&, InputMessage&);
