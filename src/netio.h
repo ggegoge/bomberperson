@@ -5,12 +5,16 @@
 #ifndef _NETIO_H_
 #define _NETIO_H_
 
+#include <boost/asio/ip/udp.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 #include <stdexcept>
 
 #include "sockets.h"
+// boost includes for socketing
+#include <boost/asio.hpp>
+
 
 constexpr size_t UDP_DATAGRAM_SIZE = 65507;
 
@@ -26,6 +30,20 @@ public:
   bool eof() const;
   
   void recv_from_sock(SocketUDP& sock);
+
+  std::vector<uint8_t> read(size_t nbytes);
+};
+
+class ReaderUDPboost {
+  size_t pos = 0;
+  size_t buff_size = 0;
+  uint8_t buff[UDP_DATAGRAM_SIZE];
+public:
+  ReaderUDPboost() {}
+
+  bool eof() const;
+  
+  void recv_from_sock(boost::asio::ip::udp::socket& sock);
 
   std::vector<uint8_t> read(size_t nbytes);
 };

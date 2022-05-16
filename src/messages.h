@@ -43,6 +43,7 @@ enum Direction {
 struct Join {
   std::string name;
   Join(const std::string& str) : name(str) {}
+  Join() : name() {}
 };
 
 // Placeholders.
@@ -52,6 +53,7 @@ struct PlaceBlock {};
 struct Move {
   Direction direction;
   Move(Direction dir) : direction(dir) {}
+  Move() : direction() {}
 };
 
 // note: the middle two structs do not exist...
@@ -195,18 +197,25 @@ using InputMessage =
 
 }; // namespace input_messages
 
-// ok now, adding overloads for server_messagess where needed
-// this is going to be painful innit...
-
-// Main functions I'd advise (to meself) that I use. Do I need them though?
-// perhaps they'r enot really necessary here...
-// although having the variant might be nice --> handling with visits?
-Serialiser& operator<<(Serialiser& ser, const client_messages::ClientMessage& msg);
-Serialiser& operator<<(Serialiser& ser, const server_messages::ServerMessage& msg);
+// For display messages I need only serialisation as I only send those messages.
 Serialiser& operator<<(Serialiser& ser, const display_messages::DisplayMessage& msg);
+
+// For input messages I actually only need deserialisation as I only receive those
+// but for now serialisation is also implemented for testing purposes.
 Serialiser& operator<<(Serialiser& ser, const input_messages::InputMessage& msg);
 
-// Deserialisation is analogous...
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, input_messages::InputMessage& msg);
+
+// Serialisation and deserialisation of client messages.
+Serialiser& operator<<(Serialiser& ser, const client_messages::ClientMessage& msg);
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, client_messages::ClientMessage& msg);
+
+// Serialisation and deserialisation of server messages.
+Serialiser& operator<<(Serialiser& ser, const server_messages::ServerMessage& msg);
+
 template <Readable R>
 Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessage& msg);
 

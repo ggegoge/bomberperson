@@ -2,6 +2,7 @@ SHELL=/bin/sh
 
 CXX = g++
 CXXFLAGS = -Wall -Wextra -Werror -std=c++20 -g # -Wconversion
+LDFLAGS = -lboost_program_options
 
 CLIENT_SRC = robots-client.cc sockets.cc netio.cc messages.cc
 CLIENT_OBJS = $(CLIENT_SRC:%.cc=src/%.o)
@@ -11,7 +12,7 @@ CLIENT_OBJS = $(CLIENT_SRC:%.cc=src/%.o)
 all: robots-client
 
 robots-client: $(CLIENT_OBJS)
-	$(CXX) $^ -o $@
+	$(CXX) $(LDFLAGS) $^ -o $@
 
 src/robots-client.o: src/robots-client.cc src/sockets.h src/serialise.h \
                      src/netio.h src/messages.h

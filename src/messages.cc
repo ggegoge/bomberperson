@@ -118,6 +118,7 @@ Serialiser& operator<<(Serialiser& ser, const EventVar& ev)
   }, ev);
 }
 
+// display messages
 Serialiser& operator<<(Serialiser& ser, const struct Lobby& l)
 {
   return ser << l.server_name << l.players_count << l.size_x << l.size_y <<
@@ -168,6 +169,38 @@ Serialiser& operator<<(Serialiser& ser, const InputMessage& msg)
 // DESER
 namespace {
 
+// deserialisation of client messages
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
+{
+  uint8_t dir;
+  deser >> dir;
+  d = (Direction)dir;
+  switch (dir) {
+  case Up:
+  case Right:
+  case Down:
+  case Left:
+    return deser;
+
+  default:
+    throw DeserProtocolError("Invalid direction!");
+  }
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Join& j)
+{
+  return deser >> j.name;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Move& mv)
+{
+  return deser >> mv.direction;
+}
+
+// deserialisation of various server messages
 template <Readable R>
 Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Hello& hello)
 {
@@ -285,6 +318,41 @@ Deserialiser<R>& f(Deserialiser<R>& deser, EventVar& ev)
 }; // namespace anonymous
 
 template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, client_messages::ClientMessage& msg)
+{
+  uint8_t kind;
+  deser >> kind;
+
+  switch (kind) {
+  case client_messages::Join: {
+    struct Join j;
+    deser >> j;
+    msg = j;
+    return deser;
+  }
+  case client_messages::PlaceBomb: {
+    struct PlaceBomb pb;
+    msg = pb;
+    return deser;
+  }
+  case client_messages::PlaceBlock: {
+    struct PlaceBlock pb;
+    msg = pb;
+    return deser;
+  }
+  case client_messages::Move: {
+    struct Move m;
+    deser >> m;
+    msg = m;
+    return deser;
+  }
+  default:
+    throw DeserProtocolError("Wrong type of client message!");
+  }
+}
+
+
+template <Readable R>
 Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessage& msg)
 {
   using namespace server_messages;
@@ -300,20 +368,28 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
     return deser;
   }
   case AcceptedPlayer: {
-    std::cerr << "todo\n";
-    exit(1);
+    struct AcceptedPlayer ap;
+    deser >> ap;
+    msg = ap;
+    return deser;
   }
   case GameStarted: {
-    std::cerr << "todo\n";
-    exit(1);    
+    struct GameStarted gs;
+    deser >> gs;
+    msg = gs;
+    return deser;
   }
   case Turn: {
-    std::cerr << "todo\n";
-    exit(1);    
+    struct Turn turn;
+    deser >> turn;
+    msg = turn;
+    return deser;
   }
   case GameEnded: {
-    std::cerr << "todo\n";
-    exit(1);    
+    struct GameEnded ge;
+    deser >> ge;
+    msg = ge;
+    return deser;
   }
   default: {
     throw DeserProtocolError("wrong server message type!");
@@ -323,6 +399,36 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
   return deser;
 }
 
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, input_messages::InputMessage& msg)
+{
+  uint8_t kind;
+  deser >> kind;
+  
+  switch (kind) {
+  case input_messages::PlaceBomb: {
+    struct PlaceBomb pb;
+    msg = pb;
+    return deser;
+  }
+  case input_messages::PlaceBlock: {
+    struct PlaceBlock pb;
+    msg = pb;
+    return deser;
+  }
+  case input_messages::Move: {
+    struct Move mv;
+    deser >> mv;
+    msg = mv;
+    return deser;
+  }
+  default:
+    throw DeserProtocolError("Wrong client message type!");
+  };
+}
+
 // Needed for separating definition from declaration.
 // https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
 template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, ServerMessage&);
+template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, ClientMessage&);
+template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, InputMessage&);

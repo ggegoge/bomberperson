@@ -29,7 +29,10 @@ sockaddr_in get_send_address(const char* host, uint16_t port)
 {
   addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
-  hints.ai_family = AF_INET; // IPv4
+  // hints.ai_family = AF_INET; // IPv4
+  // hints.ai_family = AF_INET6; // IPv6
+  hints.ai_family = AF_UNSPEC;  // any?
+  hints.ai_flags = AI_PASSIVE;
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_protocol = IPPROTO_UDP;
 
