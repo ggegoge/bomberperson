@@ -1,9 +1,21 @@
+// This file contains first and foremost implementation of important functions
+// declared at the bottom of the messages.h header -- serialisers and deserialisers
+// for messages sent by the client, server and the gui. They are all based on the
+// interface proposed in serialise.h with operators << and >> being the main and most
+// versatile method of deserialisation in our protocole.
+//
+// Note how most functions here are just chained applications of the operators on
+// all fields of chosen structs but unfortunately C++ does not provide a method
+// to easily do this (to have some "(de)serialise struct" abstraction) and that
+// is why most of the code here is boring and boilerplate.
 
 #include "netio.h"
 #include "serialise.h"
 #include "messages.h"
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <unistd.h>
 
 namespace
 {
@@ -12,7 +24,6 @@ using namespace client_messages;
 using namespace server_messages;
 using namespace input_messages;
 using namespace display_messages;
-// Overloading operator>> where needed.
 
 Serialiser& operator<<(Serialiser& ser, const struct Join& j)
 {
@@ -160,10 +171,115 @@ namespace {
 template <Readable R>
 Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Hello& hello)
 {
-  std::cerr << "deser >> hello\n";
   return deser >> hello.server_name >> hello.players_count
          >> hello.size_x >> hello.size_y >> hello.game_length
          >> hello.explosion_radius >> hello.bomb_timer;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Player& pl)
+{
+  return deser >> pl.name >> pl.address;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct AcceptedPlayer& ap)
+{
+  return deser >> ap.id >> ap.player;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct GameStarted& gs)
+{
+  return deser >> gs.players;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Turn& turn)
+{
+  return deser >> turn.turn >> turn.events;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct GameEnded& ge)
+{
+  return deser >> ge.scores;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Position& position)
+{
+  return deser >> position.first >> position.second;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Bomb& b)
+{
+  return deser >> b.position >> b.timer;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct BombPlaced& bp)
+{
+  return deser >> bp.id >> bp.position;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct BombExploded& be)
+{
+  return deser >> be.id >> be.killed >> be.blocks_destroyed;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct PlayerMoved& pm)
+{
+  return deser >> pm.id >> pm.position;
+}
+
+template <Readable R>
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct BlockPlaced& bp)
+{
+  return deser >> bp.position;
+}
+
+template <Readable R>
+Deserialiser<R>& f(Deserialiser<R>& deser, EventVar& ev)
+{
+  uint8_t kind;
+  deser >> kind;
+
+  switch (kind) {
+  case BombExploded: {
+    struct BombExploded be;
+    deser >> be;
+    ev = be;
+    return deser;
+  }
+  case BombPlaced: {
+    struct BombPlaced bp;
+    deser >> bp;
+    ev = bp;
+    return deser;
+  }
+  case PlayerMoved: {
+    struct PlayerMoved pm;
+    deser >> pm;
+    ev = pm;
+    return deser;
+
+  }
+  case BlockPlaced: {
+    struct BlockPlaced bp;
+    deser >> bp;
+    ev = bp;
+    return deser;
+  }
+  default: {
+    throw DeserProtocolError("Wrong event type!");
+  }
+  }
+
+  return deser;
 }
 
 }; // namespace anonymous
@@ -172,7 +288,7 @@ template <Readable R>
 Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessage& msg)
 {
   using namespace server_messages;
-  ServerMessageType kind;
+  uint8_t kind;
   deser >> kind;
 
   switch (kind) {
@@ -198,7 +314,10 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
   case GameEnded: {
     std::cerr << "todo\n";
     exit(1);    
-  } 
+  }
+  default: {
+    throw DeserProtocolError("wrong server message type!");
+  }
   };
 
   return deser;
@@ -207,4 +326,3 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
 // Needed for separating definition from declaration.
 // https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
 template Deserialiser<ReaderUDP>& operator>>(Deserialiser<ReaderUDP>&, ServerMessage&);
-template Deserialiser<ReaderTCP>& operator>>(Deserialiser<ReaderTCP>&, ServerMessage&);
