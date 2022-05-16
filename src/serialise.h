@@ -105,21 +105,21 @@ public:
   template <typename T>
   void ser(const T& enum_item) requires std::is_enum_v<T>
   {
-    ser((uint8_t)enum_item);
+    ser(static_cast<uint8_t>(enum_item));
   }
   
   void ser(const std::string& str)
   {
-    ser<uint8_t>(str.length());
+    ser<uint8_t>(static_cast<uint8_t>(str.length()));
 
     for (char c : str)
-      out.push_back(c);
+      out.push_back(static_cast<uint8_t>(c));
   }
 
   template <typename T>
   void ser(const std::vector<T>& seq)
   {
-    uint32_t len = seq.size();
+    uint32_t len = static_cast<uint32_t>(seq.size());
     ser(len);
 
     for (const T& item : seq)
@@ -129,7 +129,7 @@ public:
   template <typename K, typename V>
   void ser(const std::map<K, V>& map)
   {
-    uint32_t len = map.size();
+    uint32_t len = static_cast<uint32_t>(map.size());
     ser(len);
 
     for (const auto& [k, v] : map)
@@ -172,7 +172,7 @@ public:
     uint8_t len;
     deser(len);
     std::vector<uint8_t> bytes = r.read(len);
-    str.assign((char*)bytes.data(), len);
+    str.assign(reinterpret_cast<char*>(bytes.data()), len);
   }
 
   template <typename T>

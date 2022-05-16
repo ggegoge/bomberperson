@@ -42,7 +42,7 @@ inline std::ostream& operator<<(std::ostream& os, const struct server_messages::
 inline std::ostream& operator<<(std::ostream& os, const server_messages::ServerMessage& msg)
 {
   std::cerr << "msg jest printeed\n";
-  uint8_t index = msg.index();
+  uint8_t index = static_cast<uint8_t>(msg.index());
   return std::visit([&os, index] <typename T> (const T & x) -> std::ostream& {
       return os << "[" << (int)index << "]" << x;
   }, msg);

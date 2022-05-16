@@ -112,9 +112,9 @@ Serialiser& operator<<(Serialiser& ser, const struct BlockPlaced& bp)
 // next three should be in the anpn namespace but then i get warnings?....
 Serialiser& operator<<(Serialiser& ser, const EventVar& ev)
 {
-  uint8_t index = ev.index();
+  uint8_t index = static_cast<uint8_t>(ev.index());
   return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
-    return ser << (uint8_t)index << x;
+    return ser << index << x;
   }, ev);
 }
 
@@ -136,33 +136,33 @@ Serialiser& operator<<(Serialiser& ser, const struct Game& g)
 
 Serialiser& operator<<(Serialiser& ser, const ServerMessage& msg)
 {
-  uint8_t index = msg.index();
+  uint8_t index = static_cast<uint8_t>(msg.index());
   return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
-    return ser << (uint8_t)index << x;
+    return ser << index << x;
   }, msg);
 }
 
 Serialiser& operator<<(Serialiser& ser, const ClientMessage& msg)
 {
-  uint8_t index = msg.index();
+  uint8_t index = static_cast<uint8_t>(msg.index());
   return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
-    return ser << (uint8_t)index << x;
+    return ser << index << x;
   }, msg);
 }
 
 Serialiser& operator<<(Serialiser& ser, const DisplayMessage& msg)
 {
-  uint8_t index = msg.index();
+  uint8_t index = static_cast<uint8_t>(msg.index());
   return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
-    return ser << (uint8_t)index << x;
+    return ser << index << x;
   }, msg);
 }
 
 Serialiser& operator<<(Serialiser& ser, const InputMessage& msg)
 {
-  uint8_t index = msg.index();
+  uint8_t index = static_cast<uint8_t>(msg.index());
   return std::visit([&ser, index] <typename T> (const T & x) -> Serialiser& {
-    return ser << (uint8_t)index << x;
+    return ser << index << x;
   }, msg);
 }
 
@@ -175,7 +175,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
 {
   uint8_t dir;
   deser >> dir;
-  d = (Direction)dir;
+  d = static_cast<Direction>(dir);
   switch (dir) {
   case Up:
   case Right:

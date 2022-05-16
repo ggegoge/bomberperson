@@ -1,7 +1,7 @@
 SHELL=/bin/sh
 
 CXX = g++
-CXXFLAGS = -Wall -Wextra -Werror -std=c++20 -g # -Wconversion
+CXXFLAGS = -Wall -Wextra -Werror -std=c++20 -g -Wconversion
 LDFLAGS = -lboost_program_options
 
 CLIENT_SRC = robots-client.cc netio.cc messages.cc
