@@ -1,3 +1,6 @@
+
+#include "netio.h"
+#include "serialise.h"
 #include "messages.h"
 #include <cstdint>
 #include <iostream>
@@ -150,3 +153,55 @@ Ser& operator<<(Ser& ser, const InputMessage& msg)
     return ser << (uint8_t)index << x;
   }, msg);
 }
+
+// DESER
+namespace {
+
+template <Readable R>
+Deser<R>& operator>>(Deser<R>& deser, struct Hello& hello)
+{
+  std::cerr << "deser >> hello\n";
+  return deser >> hello.server_name >> hello.players_count
+         >> hello.size_x >> hello.size_y >> hello.game_length
+         >> hello.explosion_radius >> hello.bomb_timer;
+}
+
+}; // namespace anonymous
+
+template <Readable R>
+Deser<R>& operator>>(Deser<R>& deser, server_messages::ServerMessage& msg)
+{
+  using namespace server_messages;
+  ServerMessageType kind;
+  deser >> kind;
+
+  switch (kind) {
+  case Hello: {
+    std::cerr << "kind -> hello\n";
+    struct Hello hello;
+    deser >> hello;
+    msg = hello;
+    return deser;
+  }
+  case AcceptedPlayer: {
+    std::cerr << "todo\n";
+    exit(1);
+  }
+  case GameStarted: {
+    std::cerr << "todo\n";
+    exit(1);    
+  }
+  case Turn: {
+    std::cerr << "todo\n";
+    exit(1);    
+  }
+  case GameEnded: {
+    std::cerr << "todo\n";
+    exit(1);    
+  } 
+  };
+
+  return deser;
+}
+
+template Deser<ReaderUDP>& operator>>(Deser<ReaderUDP>&, ServerMessage&);

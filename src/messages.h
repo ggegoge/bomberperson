@@ -5,6 +5,7 @@
 #define _MESSAGES_H_
 
 #include <cstdint>
+#include <iostream>
 #include <variant>
 #include <vector>
 #include <map>
@@ -198,6 +199,8 @@ Ser& operator<<(Ser& ser, const server_messages::ServerMessage& msg);
 Ser& operator<<(Ser& ser, const display_messages::DisplayMessage& msg);
 Ser& operator<<(Ser& ser, const input_messages::InputMessage& msg);
 
-
+// Deserialisation is analogous...
+template <Readable R>
+Deser<R>& operator>>(Deser<R>& deser, server_messages::ServerMessage& msg);
 
 #endif  // _MESSAGES_H_

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <iostream>
+#include <string>
 
 using namespace std;
 
@@ -21,10 +22,13 @@ ostream& operator<<(ostream& os, vector<uint8_t>& bytes)
   return os;
 }
 
+void send_test(SocketUDP& sock, const string& opt);
+void recv_test(SocketUDP& sock, const string& opt);
+
 int main(int argc, char* argv[])
 {
-  if (argc < 5) {
-    printf("Usage: %s <port> <host> <host-port> <client/server>\n", argv[0]);
+  if (argc < 6) {
+    printf("Usage: %s <port> <host> <host-port> <send/recv> <opt>\n", argv[0]);
     exit(1);
   } else {
     printf("argc == %d\n", argc);
@@ -37,9 +41,51 @@ int main(int argc, char* argv[])
 
   Ser ser;
   std::vector<uint8_t> bytes;
-  std::string opt(argv[4]);
+  string send_recv(argv[4]);
+  std::string opt(argv[5]);
+
+  if (send_recv == "send")
+    send_test(sock, opt);
+  else if (send_recv == "recv")
+    recv_test(sock, opt);
+  else
+    cout << "send/recv must be either send or recv\n";
+
   
+  return 0;
+}
+
+#include "dbg.h"
+void recv_test(SocketUDP& sock, const string& opt)
+{
+  ReaderUDP rd;
+  rd.recv_from_sock(sock);
+
+  Deser<ReaderUDP> deser{rd};
+
   if (opt == "client") {
+    // using namespace client_messages;
+    // ClientMessage msg;
+    // deser >> msg;
+  } else if (opt == "server") {
+    using namespace server_messages;
+    ServerMessage msg;
+    deser >> msg;
+
+    cout << msg;
+  } else if (opt == "input") {
+
+  } else {
+    cout << "invalid opt!\n";
+  }
+}
+
+void send_test(SocketUDP& sock, const string& opt)
+{
+  Ser ser;
+  std::vector<uint8_t> bytes;
+
+    if (opt == "client") {
     using namespace client_messages;
     
     // wyślemy Join("siemkaaa") -> [0, 8, s, i, ..., a]
@@ -220,6 +266,4 @@ int main(int argc, char* argv[])
   } else {
     cout << "wrong opt!\n";
   }
-
-  return 0;
 }

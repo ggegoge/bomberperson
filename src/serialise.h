@@ -66,31 +66,70 @@ public:
   Deser(R&& r) : r(std::move(r)) {}
 
   template <typename T>
-  void deser_int(T& item)
+  void deser(T& item) requires (!std::is_enum_v<T>)
   {
     std::vector<uint8_t> buff = r.read(sizeof(T));
     item = ntoh<T>(*(T*)(buff.data()));
   }
 
-  void deser_str(std::string& str)
+  template <typename T>
+  void deser(T& enum_item) requires std::is_enum_v<T>
+  {
+    uint8_t item;
+    deser(item);
+    // widening conversion
+    enum_item = (T)item;
+  }
+  
+  void deser(std::string& str)
   {
     uint8_t len;
-    deser_int(len);
+    deser(len);
     std::vector<uint8_t> bytes = r.read(len);
     str.assign((char*)bytes.data(), len);
   }
 
   template <typename T>
-  Deser& operator>>(T& item)
+  void deser(std::vector<T>& seq)
   {
-    deser_int<T>(item);
-    return *this;
+    uint32_t len;
+    deser(len);
+    // seq = std::vector<T>(len);
+
+    // for (uint32_t i = 0; i < len; ++i)
+    //   *this >> seq.at(i);
+
+    for (uint32_t i = 0; i < len; ++i) {
+      T x;
+      *this >> x;
+      seq.push_back(x);
+    }
   }
 
-  // will this work?
-  Deser& operator>>(std::string& str)
+  template <typename K, typename V>
+  void deser(std::map<K, V>& map)
   {
-    deser_str(str);
+    uint32_t len;
+    deser(len);
+
+    for (uint32_t i = 0; i < len; ++i) {
+      K k;
+      V v;
+      *this >> k >> v;
+      map.insert({k, v});
+    }
+  }
+
+  template <typename T1, typename T2>
+  void deser(std::pair<T1, T2>& pair)
+  {
+    *this >> pair.first >> pair.second;
+  }
+  
+  template <typename T>
+  Deser& operator>>(T& item)
+  {
+    deser(item);
     return *this;
   }
 };
@@ -120,7 +159,7 @@ public:
 
   // All enums are serialised as one-byte integers!
   template <typename T>
-  void ser(const T& enum_item) requires std::is_enum<T>::value
+  void ser(const T& enum_item) requires std::is_enum_v<T>
   {
     ser((uint8_t)enum_item);
   }

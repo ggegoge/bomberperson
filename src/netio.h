@@ -23,6 +23,8 @@ class ReaderUDP {
 public:
   ReaderUDP() {}
 
+  bool eof() const;
+  
   void recv_from_sock(SocketUDP& sock);
 
   std::vector<uint8_t> read(size_t nbytes);

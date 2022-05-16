@@ -11,7 +11,12 @@ std::vector<uint8_t> ReaderUDP::read(size_t nbytes)
   return bytes;
 }
 
+bool ReaderUDP::eof() const
+{
+  return pos == buff_size;
+}
+
 void ReaderUDP::recv_from_sock(SocketUDP &sock)
 {
-  pos = sock.receive_message(buff, UDP_DATAGRAM_SIZE);
+  buff_size = sock.receive_message(buff, UDP_DATAGRAM_SIZE);
 }
