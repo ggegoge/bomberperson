@@ -1,5 +1,9 @@
 // Messages sent in our protocol.
-// TODO: moving implementation to .cc?
+
+// TODO: reorganise the namespaces so that they are less messy?
+// one namespace robots? with sub name spaces perhaps?
+// or something else?
+// Also: enums -> capitals and drop the "struct"?
 
 #ifndef _MESSAGES_H_
 #define _MESSAGES_H_
@@ -16,12 +20,6 @@
 #include <vector>
 
 #include "serialise.h"
-
-template <typename T>
-using List = std::set<T>;
-
-template <typename T>
-using Set = std::set<T>;
 
 using PlayerId = uint8_t;
 using BombId = uint32_t;
@@ -62,13 +60,11 @@ struct Move {
   Move() : direction() {}
 };
 
-// note: the middle two structs do not exist...
 using ClientMessage =
   std::variant<struct Join, struct PlaceBomb, struct PlaceBlock, struct Move>;
 
 }; // namespace client_message
 
-// todo: is there point in serialising enums with one field?
 namespace server_messages
 {
 
@@ -154,7 +150,6 @@ struct AcceptedPlayer {
 
 // also redundant?
 struct GameStarted {
-  // todo: using map?
   std::map<PlayerId, Player> players;
 };
 

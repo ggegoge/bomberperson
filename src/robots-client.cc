@@ -3,8 +3,6 @@
 #include "serialise.h"
 #include "messages.h"
 
-#include "dbg.h"
-
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/io_context.hpp>
@@ -14,14 +12,11 @@
 #include <boost/program_options.hpp>
 #include <boost/program_options/errors.hpp>
 #include <map>
-#include <stop_token>
 #include <thread>
 #include <type_traits>
-#include <functional>
 #include <regex>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <exception>
 #include <iostream>
 #include <string>
@@ -43,6 +38,7 @@ using display_messages::DisplayMessage;
 using server_messages::ServerMessage;
 using client_messages::ClientMessage;
 
+// todo: add trying and catching of that wherever it is advisable!
 class ClientError : public std::runtime_error {
 public:
   ClientError()
@@ -54,7 +50,7 @@ public:
 
 namespace {
 
-// Helper for visiting, inspired by cppref.
+// Helper for visiting mimicking pattern matching, inspired by cppref.
 template<typename> inline constexpr bool always_false_v = false;
 
 struct GameState {
@@ -69,14 +65,13 @@ struct GameState {
   uint16_t explosion_radius;
 };
 
+// todo: address of form ::1:40007 is parsed but [::1]:40007 should be too!
 pair<string, string> get_addr(const string& addr)
 {
-  cerr << "addr=" << addr;
   static regex r("^(.*):(\\d+)$");
   smatch sm;
 
   if (regex_search(addr, sm, r)) {
-    cerr << "matchess\n";
     return {sm[1].str(), sm[2].str()};
   } else {
     throw ClientError("Invalid address!");
@@ -104,8 +99,6 @@ public:
       gui(), server(), server_deser(server_socket), gui_deser({})
   {
     auto [gui_ip, gui_port] = get_addr(gui_addr);
-    cout << "gui_ip=" << gui_ip << ", " << "gui_port=" << gui_port << "\n";
-
     udp::resolver udp_resolver(io_ctx);
     gui = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
 
@@ -115,8 +108,6 @@ public:
       cerr << "GUI: " << gui.address() << ":" << gui.port() << "\n";
 
     auto [serv_ip, serv_port] = get_addr(server_addr);
-    cout << "serv_ip=" << serv_ip << ", " << "serv_port=" << serv_port << "\n";
-
     tcp::resolver tcp_resolver(io_ctx);
     server = *tcp_resolver.resolve(serv_ip, serv_port, resolver_base::numeric_service);
 
@@ -125,11 +116,13 @@ public:
     else
       cerr << "SERVER: " << server.address() << ":" << server.port() << "\n";
 
-    // todo: move to separate functions, innit?
+    // open connection to the server
     server_socket.connect(server);
     tcp::no_delay option(true);
     server_socket.set_option(option);
-    
+
+    // todo: gui needs to be turned on beforehand! should I really connect?
+    // and to the gui...? Perhaps I should stick to send_to and receive_from?
     gui_socket.connect(gui);
   }
 
@@ -146,16 +139,16 @@ private:
   // such update it should tell the gui to show what is going on appropriately.
   void game_handler();
 
-  // Utilities?
   // Variant to variant conversion.
   ClientMessage input_to_client(InputMessage& msg);
 
   // Game'ise the lobby, changes the held game state appropriately.
   void lobby_to_game();
 
+  // Fill bombs in current game_state.state based on game_state.bombs.
   void fill_bombs();
 
-  // Events affect the game
+  // Events affect the game.
   void apply_event(struct display_messages::Game& game,
                    map<BombId, server_messages::Bomb>& bombs,
                    const server_messages::EventVar& event);
@@ -169,14 +162,12 @@ private:
   void ge_handler(struct server_messages::GameEnded& ge);
 };
 
-// TODO
-// Can we assume we get hello only when game is already on?...
+// todo: receiving some messages like AccP or Hello _during the game_ is UB...
 void RoboticClient::hello_handler(struct server_messages::Hello& h)
 {
   cerr << "[game_handler] hello handler\n";
-  using namespace display_messages;
-  // Ignoring Hello when the game is already on.
 
+  using namespace display_messages;
   struct Lobby l{h.server_name, h.players_count, h.size_x, h.size_y, h.game_length,
     h.explosion_radius, h.bomb_timer, map<PlayerId, server_messages::Player>{}};
 
@@ -218,8 +209,8 @@ void RoboticClient::lobby_to_game()
 void RoboticClient::gs_handler(struct server_messages::GameStarted& gs)
 {
   cerr << "[game_handler] gs_handler\n";
-  using namespace display_messages;
 
+  using namespace display_messages;
   game_state.observer = true;
 
   visit([&gs] <typename GorL> (GorL& gl) {
@@ -234,6 +225,7 @@ void RoboticClient::apply_event(struct display_messages::Game& game,
                                 const server_messages::EventVar& event)
 {
   cerr << "[game_handler] apply event\n";
+
   using namespace server_messages;
   visit([&game, &bombs, this] <typename Ev> (const Ev & ev) {
       if constexpr(same_as<struct BombPlaced, Ev>) {
@@ -259,6 +251,7 @@ void RoboticClient::apply_event(struct display_messages::Game& game,
 void RoboticClient::turn_handler(struct server_messages::Turn& turn)
 {
   cerr << "[game_handler] turn handler, turn=" << turn.turn << "\n";
+
   lobby_to_game();
   struct display_messages::Game& current_game =
     get<struct display_messages::Game>(game_state.state);
@@ -277,6 +270,7 @@ void RoboticClient::turn_handler(struct server_messages::Turn& turn)
 void RoboticClient::ge_handler(struct server_messages::GameEnded& ge)
 {
   cerr << "[game_handler] ge_handler\n";
+
   using namespace display_messages;
   // note: we do not care about races towards "lobby"
   game_state.lobby = true;
@@ -374,16 +368,18 @@ void RoboticClient::input_handler()
   // and if we are not observers. Is such a loop good here? I think so...
   using namespace client_messages;
 
-  cerr << "gui_to_server: start\n";
   ClientMessage msg;
-  
+  InputMessage inp;
+
   for (;;) {
-    InputMessage inp;
     cerr << "[input_handler] waiting for input\n";
+    // todo: add methods for recv and send etc that wrap around that?
     gui_deser.readable().recv_from_sock(gui_socket);
+    // todo: ignore invalid messages!
     gui_deser >> inp;
 
     if (game_state.lobby) {
+      cerr << "[input_handler] first input in the lobby --> trying to join\n";
       game_state.lobby = false;
       struct Join j(name);
       msg = j;
@@ -403,11 +399,11 @@ void RoboticClient::game_handler()
   ServerMessage updt;
   DisplayMessage msg;
 
-  cerr << "[game_handler] server_to_gui running\n";
   for (;;) {
     cerr << "[game_handler] tying to read a message from server\n";
+    // todo: disconnect upon receiving a bad message. Should try to reconnect?
     server_deser >> updt;
-    cerr << "[game_handler] message read\n";
+    cerr << "[game_handler] message read, proceeding to handle it!\n";
     server_msg_handler(updt);
 
     fill_bombs();
@@ -466,7 +462,8 @@ int main(int argc, char* argv[])
          << "\tgui-address=" << gui_addr << "\n"
          << "\tplayer-name=" << player_name << "\n"
          << "\tserver-address=" << server_addr << "\n"
-         << "\tport=" << portnum << "\n";
+         << "\tport=" << portnum << "\n"
+         << "Running the client with those.\n";
 
     RoboticClient client(player_name, portnum, server_addr, gui_addr);
     client.play();
