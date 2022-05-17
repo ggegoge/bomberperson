@@ -9,7 +9,7 @@
 // to easily do this (to have some "(de)serialise struct" abstraction) and that
 // is why most of the code here is boring and boilerplate.
 
-#include "netio.h"
+#include "readers.h"
 #include "serialise.h"
 #include "messages.h"
 #include <algorithm>

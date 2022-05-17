@@ -2,8 +2,8 @@
 // and buffers. The classes here are written in such a manner that they can be
 // used by the serialisation module.
 
-#ifndef _NETIO_H_
-#define _NETIO_H_
+#ifndef _READERS_H_
+#define _READERS_H_
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -39,4 +39,4 @@ public:
   std::vector<uint8_t> read(size_t nbytes);
 };
 
-#endif  // _NETIO_H_
+#endif  // _READERS_H_
