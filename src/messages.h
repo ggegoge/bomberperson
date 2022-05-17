@@ -8,15 +8,21 @@
 #include <iostream>
 #include <stdexcept>
 #include <variant>
-#include <vector>
 #include <map>
+#include <set>
+#include <unordered_set>
 #include <tuple>
 #include <string>
+#include <vector>
 
 #include "serialise.h"
 
 template <typename T>
-using List = std::vector<T>;
+using List = std::set<T>;
+
+template <typename T>
+using Set = std::set<T>;
+
 using PlayerId = uint8_t;
 using BombId = uint32_t;
 using Position = std::pair<uint16_t, uint16_t>;
@@ -74,6 +80,15 @@ struct Player {
 struct Bomb {
   Position position;
   uint16_t timer;
+  bool operator==(const struct Bomb& other) const
+  {
+    return position == other.position;
+  }
+
+  auto operator<=>(const struct Bomb& other) const
+  {
+    return position <=> other.position;
+  }
 };
 
 enum EventType {
@@ -84,12 +99,22 @@ enum EventType {
 struct BombPlaced {
   BombId id;
   Position position;
+
+  bool operator==(const struct BombPlaced& other) const
+  {
+    return id == other.id;
+  }
+
+  auto operator<=>(const struct BombPlaced& other) const
+  {
+    return id <=> other.id;
+  }
 };
 
 struct BombExploded {
   BombId id;
-  List<PlayerId> killed;
-  List<Position> blocks_destroyed;
+  std::set<PlayerId> killed;
+  std::set<Position> blocks_destroyed;
 };
 
 // redundant perhaps?
@@ -135,7 +160,7 @@ struct GameStarted {
 
 struct Turn {
   uint16_t turn;
-  List<EventVar> events;
+  std::vector<EventVar> events;
 };
 
 struct GameEnded {
@@ -173,10 +198,10 @@ struct Game {
   uint16_t turn;
   std::map<PlayerId, server_messages::Player> players;
   std::map<PlayerId, Position> player_positions;
-  List<Position> blocks;
+  std::set<Position> blocks;
   // todo: better namespacing would be useful, namespace robots for the commons
-  List<server_messages::Bomb> bombs;
-  List<Position> explosions;
+  std::set<server_messages::Bomb> bombs;
+  std::set<Position> explosions;
   std::map<PlayerId, Score> scores;
 };
 

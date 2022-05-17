@@ -60,9 +60,11 @@ template<typename> inline constexpr bool always_false_v = false;
 
 struct GameState {
   DisplayMessage state;
+  map<BombId, server_messages::Bomb> bombs;
   // this bool will tell us whether to ignore the gui input or not.
   bool observer = false;
   bool game_on = false;
+  uint16_t timer;
 };
 
 pair<string, string> get_addr(const string& addr)
@@ -84,7 +86,6 @@ pair<string, string> get_addr(const string& addr)
 class RoboticClient {
   boost::asio::io_context io_ctx;
   string name;
-  uint16_t portnum;
   tcp::socket server_socket;
   udp::socket gui_socket;
   udp::endpoint gui;
@@ -98,8 +99,7 @@ class RoboticClient {
 public:
   RoboticClient(const string& name, uint16_t portnum,
                 const string& server_addr, const string& gui_addr)
-    : name(name), portnum(portnum), server_socket(io_ctx),
-      gui_socket(io_ctx, udp::endpoint(udp::v6(), portnum)),
+    : name(name), server_socket(io_ctx), gui_socket(io_ctx, udp::endpoint(udp::v6(), portnum)),
       gui(), server(), server_deser(server_socket), gui_deser({})
   {
     auto [gui_ip, gui_port] = get_addr(gui_addr);
@@ -177,8 +177,12 @@ private:
   // Game'ise the lobby, changes the held game state appropriately.
   void lobby_to_game();
 
+  void fill_bombs();
+
   // Events affect the game
-  void apply_event(struct display_messages::Game& game, server_messages::EventVar& ev);
+  void apply_event(struct display_messages::Game& game,
+                   map<BombId, server_messages::Bomb>& bombs,
+                   const server_messages::EventVar& event);
 
   // Handling of messages from the server.
   void server_msg_handler(server_messages::ServerMessage& msg);
@@ -211,6 +215,7 @@ void RoboticClient::hello_handler(struct server_messages::Hello& h)
   struct Lobby l{h.server_name, h.players_count, h.size_x, h.size_y, h.game_length,
     h.explosion_radius, h.bomb_timer, map<PlayerId, server_messages::Player>{}};
 
+  game_state.timer = h.bomb_timer;
   game_state.state = l;
 }
 
@@ -262,21 +267,25 @@ void RoboticClient::gs_handler(struct server_messages::GameStarted& gs)
 }
 
 void RoboticClient::apply_event(struct display_messages::Game& game,
-                                server_messages::EventVar& event)
+                                map<BombId, server_messages::Bomb>& bombs,
+                                const server_messages::EventVar& event)
 {
   using namespace server_messages;
-  visit([&game] <typename Ev> (Ev& ev) {
+  visit([&game, &bombs, this] <typename Ev> (const Ev & ev) {
       if constexpr(same_as<struct BombPlaced, Ev>) {
-        // TODO: I need to have a map BombId -> Bomb...
-        // needed for handling explosions etc
+        bombs.insert({ev.id, {ev.position, game_state.timer}});
       } else if constexpr(same_as<struct BombExploded, Ev>) {
-        // TODO like above
+        bombs.erase(ev.id);
+
+        for (PlayerId plid : ev.killed)
+          ++game.scores[plid];
+
+        for (Position pos : ev.blocks_destroyed)
+          game.blocks.erase(pos);
       } else if constexpr(same_as<struct PlayerMoved, Ev>) {
         game.player_positions[ev.id] = ev.position;
       } else if constexpr(same_as<struct BlockPlaced, Ev>) {
-        // TODO: keep a set of block for easier destroying etc?
-        // Actually could keep "List" as a set right? Serialisation is the same.
-        game.blocks.push_back(ev.position);
+        game.blocks.insert(ev.position);
       } else {
         static_assert(always_false_v<Ev>, "Non-exhaustive pattern matching!");
       }
@@ -290,9 +299,13 @@ void RoboticClient::turn_handler(struct server_messages::Turn& turn)
     get<struct display_messages::Game>(game_state.state);
   current_game.turn = turn.turn;
 
-  for (server_messages::EventVar& ev : turn.events) {
-    apply_event(current_game, ev);
+  for (const server_messages::EventVar& ev : turn.events) {
+    apply_event(current_game, game_state.bombs, ev);
   }
+
+  // upon each turn the bombs get their timers reduced.
+  for (auto& [_, bomb] : game_state.bombs)
+    --bomb.timer;
 }
 void RoboticClient::ge_handler(struct server_messages::GameEnded&) {}
 
@@ -300,6 +313,26 @@ void RoboticClient::pbm_handler(struct client_messages::PlaceBomb&) {}
 void RoboticClient::pbl_handler(struct client_messages::PlaceBlock&) {}
 void RoboticClient::mv_handler(struct client_messages::Move&) {}
 
+void RoboticClient::fill_bombs()
+{
+  using namespace display_messages;
+
+  visit([this] <typename GorL> (GorL& gl) {
+      if constexpr(same_as<struct Lobby, GorL>) {
+        // No bombs in the lobby.
+        return;
+      } else if constexpr(same_as<struct Game, GorL>) {
+        gl.bombs = {};
+
+        for (auto& [_, bomb] : game_state.bombs) {
+          // todo: insertion does not do anything if an object is already in
+          gl.bombs.insert(bomb);
+        }
+      } else {
+        static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
+      }
+    }, game_state.state);
+}
 
 InputMessage RoboticClient::recv_gui()
 {
@@ -313,6 +346,7 @@ InputMessage RoboticClient::recv_gui()
 void RoboticClient::send_gui()
 {
   lock_guard<mutex> lock{udp_mutex};
+  fill_bombs();
   server_ser << game_state.state;
   gui_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
 }
