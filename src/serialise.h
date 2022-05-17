@@ -158,6 +158,12 @@ public:
   Deserialiser(const R& r) : r(r) {}
   Deserialiser(R&& r) : r(std::move(r)) {}
 
+  // This allows for changing and accessing the underlying readable.
+  R& readable()
+  {
+    return r;
+  }
+
   // Note: we do not offer a function for deserialising enums as it is quite
   // dangerous considering there is no range check done on them upon conversion.
   template <std::integral T>
