@@ -11,7 +11,6 @@
 #include <boost/asio/ip/resolver_base.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ip/udp.hpp>
-#include <boost/asio/registered_buffer.hpp>
 #include <boost/program_options.hpp>
 #include <boost/program_options/errors.hpp>
 #include <condition_variable>
