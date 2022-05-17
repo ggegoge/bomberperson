@@ -14,7 +14,6 @@
 #include "messages.h"
 #include <algorithm>
 #include <cstdint>
-#include <iostream>
 #include <unistd.h>
 
 using namespace client_messages;
@@ -85,7 +84,6 @@ Serialiser& operator<<(Serialiser& ser, const Position& position)
 
 Serialiser& operator<<(Serialiser& ser, const struct Bomb& b)
 {
-  std::cerr << "bomb!\n";
   return ser << b.position << b.timer;
 }
 
@@ -356,41 +354,35 @@ template <Readable R>
 Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessage& msg)
 {
   using namespace server_messages;
-  std::cerr << "deser of server msg\n";
   uint8_t kind;
   deser >> kind;
 
   switch (kind) {
   case Hello: {
-    // std::cerr << "kind -> hello\n";
     struct Hello hello;
     deser >> hello;
     msg = hello;
     return deser;
   }
   case AcceptedPlayer: {
-    std::cerr << "kind -> ap\n";
     struct AcceptedPlayer ap;
     deser >> ap;
     msg = ap;
     return deser;
   }
   case GameStarted: {
-    // std::cerr << "kind -> gs\n";
     struct GameStarted gs;
     deser >> gs;
     msg = gs;
     return deser;
   }
   case Turn: {
-    // std::cerr << "kind -> turn\n";
     struct Turn turn;
     deser >> turn;
     msg = turn;
     return deser;
   }
   case GameEnded: {
-    // std::cerr << "kind -> ge\n";
     struct GameEnded ge;
     deser >> ge;
     msg = ge;
