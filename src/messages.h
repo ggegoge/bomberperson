@@ -37,11 +37,11 @@ namespace client_messages
 {
 
 enum ClientMessageType {
-  Join, PlaceBomb, PlaceBlock, Move
+  JOIN, PLACE_BOMB, PLACE_BLOCK, MOVE
 };
 
 enum Direction {
-  Up, Right, Down, Left,
+  UP, RIGHT, DOWN, LEFT,
 };
 
 struct Join {
@@ -88,7 +88,7 @@ struct Bomb {
 };
 
 enum EventType {
-  BombPlaced, BombExploded, PlayerMoved, BlockPlaced
+  BOMB_PLACED, BOMB_EXPLODED, PLAYER_MOVED, BLOCK_PLACED
 };
 
 // structures for those events:
@@ -128,7 +128,7 @@ using EventVar =
         struct BlockPlaced>;
 
 enum ServerMessageType {
-  Hello, AcceptedPlayer, GameStarted, Turn, GameEnded
+  HELLO, ACCEPTED_PLAYER, GAME_STARTED, TURN, GAME_ENDED
 };
 
 // Hello
@@ -171,7 +171,7 @@ namespace display_messages
 {
 
 enum DisplayMessageType {
-  Lobby, Game
+  LOBBY, GAME
 };
 
 struct Lobby {
@@ -208,7 +208,7 @@ namespace input_messages
 {
 
 enum InputMessageType {
-  PlaceBomb, PlaceBlock, Move
+  PLACE_BOMB, PLACE_BLOCK, MOVE
 };
 
 using InputMessage =

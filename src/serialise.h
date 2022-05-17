@@ -35,7 +35,6 @@ template <typename T>
 concept Readable = requires (T x, size_t nbytes)
 {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
-  // {x.eof()} -> std::convertible_to<bool>;
 };
 
 // This concepts ensures that type Seq represents an iterable sized container.

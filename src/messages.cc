@@ -175,10 +175,10 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
   deser >> dir;
   d = static_cast<Direction>(dir);
   switch (dir) {
-  case Up:
-  case Right:
-  case Down:
-  case Left:
+  case UP:
+  case RIGHT:
+  case DOWN:
+  case LEFT:
     return deser;
 
   default:
@@ -280,26 +280,26 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, EventVar& ev)
   deser >> kind;
 
   switch (kind) {
-  case BombExploded: {
+  case BOMB_EXPLODED: {
     struct BombExploded be;
     deser >> be;
     ev = be;
     return deser;
   }
-  case BombPlaced: {
+  case BOMB_PLACED: {
     struct BombPlaced bp;
     deser >> bp;
     ev = bp;
     return deser;
   }
-  case PlayerMoved: {
+  case PLAYER_MOVED: {
     struct PlayerMoved pm;
     deser >> pm;
     ev = pm;
     return deser;
 
   }
-  case BlockPlaced: {
+  case BLOCK_PLACED: {
     struct BlockPlaced bp;
     deser >> bp;
     ev = bp;
@@ -322,23 +322,23 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, client_messages::ClientMessa
   deser >> kind;
 
   switch (kind) {
-  case client_messages::Join: {
+  case client_messages::JOIN: {
     struct Join j;
     deser >> j;
     msg = j;
     return deser;
   }
-  case client_messages::PlaceBomb: {
+  case client_messages::PLACE_BOMB: {
     struct PlaceBomb pb;
     msg = pb;
     return deser;
   }
-  case client_messages::PlaceBlock: {
+  case client_messages::PLACE_BLOCK: {
     struct PlaceBlock pb;
     msg = pb;
     return deser;
   }
-  case client_messages::Move: {
+  case client_messages::MOVE: {
     struct Move m;
     deser >> m;
     msg = m;
@@ -358,31 +358,31 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
   deser >> kind;
 
   switch (kind) {
-  case Hello: {
+  case HELLO: {
     struct Hello hello;
     deser >> hello;
     msg = hello;
     return deser;
   }
-  case AcceptedPlayer: {
+  case ACCEPTED_PLAYER: {
     struct AcceptedPlayer ap;
     deser >> ap;
     msg = ap;
     return deser;
   }
-  case GameStarted: {
+  case GAME_STARTED: {
     struct GameStarted gs;
     deser >> gs;
     msg = gs;
     return deser;
   }
-  case Turn: {
+  case TURN: {
     struct Turn turn;
     deser >> turn;
     msg = turn;
     return deser;
   }
-  case GameEnded: {
+  case GAME_ENDED: {
     struct GameEnded ge;
     deser >> ge;
     msg = ge;
@@ -403,17 +403,17 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, input_messages::InputMessage
   deser >> kind;
   
   switch (kind) {
-  case input_messages::PlaceBomb: {
+  case input_messages::PLACE_BOMB: {
     struct PlaceBomb pb;
     msg = pb;
     return deser;
   }
-  case input_messages::PlaceBlock: {
+  case input_messages::PLACE_BLOCK: {
     struct PlaceBlock pb;
     msg = pb;
     return deser;
   }
-  case input_messages::Move: {
+  case input_messages::MOVE: {
     struct Move mv;
     deser >> mv;
     msg = mv;
