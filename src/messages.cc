@@ -362,7 +362,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
 
   switch (kind) {
   case Hello: {
-    std::cerr << "kind -> hello\n";
+    // std::cerr << "kind -> hello\n";
     struct Hello hello;
     deser >> hello;
     msg = hello;
@@ -376,21 +376,21 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
     return deser;
   }
   case GameStarted: {
-    std::cerr << "kind -> gs\n";
+    // std::cerr << "kind -> gs\n";
     struct GameStarted gs;
     deser >> gs;
     msg = gs;
     return deser;
   }
   case Turn: {
-    std::cerr << "kind -> turn\n";
+    // std::cerr << "kind -> turn\n";
     struct Turn turn;
     deser >> turn;
     msg = turn;
     return deser;
   }
   case GameEnded: {
-    std::cerr << "kind -> ge\n";
+    // std::cerr << "kind -> ge\n";
     struct GameEnded ge;
     deser >> ge;
     msg = ge;

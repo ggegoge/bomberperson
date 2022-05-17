@@ -14,8 +14,10 @@
 #include <boost/asio/registered_buffer.hpp>
 #include <boost/program_options.hpp>
 #include <boost/program_options/errors.hpp>
+#include <condition_variable>
 #include <map>
 #include <mutex>
+#include <stop_token>
 #include <thread>
 #include <type_traits>
 #include <functional>
@@ -64,7 +66,10 @@ struct GameState {
   // this bool will tell us whether to ignore the gui input or not.
   bool observer = false;
   bool game_on = false;
+  // data from the server
   uint16_t timer;
+  uint8_t players_count;
+  uint16_t explosion_radius;
 };
 
 pair<string, string> get_addr(const string& addr)
@@ -95,7 +100,9 @@ class RoboticClient {
   Deserialiser<ReaderTCP> server_deser;
   Deserialiser<ReaderUDP> gui_deser;
   GameState game_state;
-  mutex udp_mutex;
+  // mutex udp_mutex;
+  // mutex wait_mutex;
+  // condition_variable cv_gui;
 public:
   RoboticClient(const string& name, uint16_t portnum,
                 const string& server_addr, const string& gui_addr)
@@ -114,63 +121,28 @@ public:
 
     // todo: move to separate functions, innit?
     server_socket.connect(server);
+    tcp::no_delay option(true);
+    server_socket.set_option(option);
+    
     gui_socket.connect(gui);
   }
 
-  // test whether we can say hello through both of out sockets
-  void test()
-  {
-    using namespace display_messages;
-    cout << "display via sockkk\n";
-    DisplayMessage msg;
-    struct Lobby l;
-    l.server_name = "GNIOX";
-    l.players_count = 11;
-    l.size_x = 1234;
-    l.size_y = 1;
-    l.game_length = 0;
-    l.explosion_radius = 11;
-    l.bomb_timer = 17;
-    struct server_messages::Player p1;
-    p1.name = "KOT";
-    p1.address = "1.2.3.4:0001";
-    struct server_messages::Player p2;
-    p2.name = name;
-    p2.address = "4.3.2.1:2137";
-    struct server_messages::Player p3;
-    p3.name = "pojście spać!!!";
-    p3.address = "5.7.3.8:0001";
-    l.players.insert({1, p1});
-    l.players.insert({2, p2});
-    l.players.insert({3, p3});
+  // Main function for actually playing the game.
+  void play_game();
 
-    msg = l;
-    server_ser.clean();
-    server_ser << msg;
-    vector<uint8_t> bytes = server_ser.drain_bytes();
-    gui_socket.send(boost::asio::buffer(bytes));
-
-    using namespace client_messages;
-    // wyślemy Join("siemkaaa") -> [0, 8, s, i, ..., a]
-    struct Join j("siemkaaa");
-    ClientMessage send_msg = j;
-    server_ser << send_msg;
-    bytes = server_ser.drain_bytes();
-    server_socket.send(boost::asio::buffer(bytes));
-  }
-
+  void play();
+  
+private:
   // This function will be executed by one of the threads to receive input form
   // the gui and send it forward to the server.
-  void gui_to_server();
+  void gui_to_server(stop_token stoken);
 
   // This function reads messages from the server and updates the game state by
   // aggregating all of the information coming from the server. Then after each
   // such update it should tell the gui to show what is going on appropriately.
-  void server_to_gui();
+  void server_to_gui(stop_token stoken, jthread& input_handler);
 
-private:
   // Utilities?
-
   // Variant to variant conversion.
   ClientMessage input_to_client(InputMessage& msg);
 
@@ -197,34 +169,32 @@ private:
   void pbm_handler(struct client_messages::PlaceBomb& pbm);
   void pbl_handler(struct client_messages::PlaceBlock& pbl);
   void mv_handler(struct client_messages::Move& mv);
-
-  // Have these two functions separately as they use the same socket?
-  InputMessage recv_gui();
-  void send_gui();
 };
 
 // TODO
 // Can we assume we get hello only when game is already on?...
 void RoboticClient::hello_handler(struct server_messages::Hello& h)
 {
+  cerr << "[game_handler] hello handler\n";
   using namespace display_messages;
   // Ignoring Hello when the game is already on.
-  if (game_state.game_on)
-    return;
 
+  game_state.game_on = true;
   struct Lobby l{h.server_name, h.players_count, h.size_x, h.size_y, h.game_length,
     h.explosion_radius, h.bomb_timer, map<PlayerId, server_messages::Player>{}};
 
   game_state.timer = h.bomb_timer;
   game_state.state = l;
+  game_state.players_count = h.players_count;
 }
 
 void RoboticClient::ap_handler(struct server_messages::AcceptedPlayer& ap)
 {
-  if (game_state.game_on)
-    return;
+  cerr << "[game_handler] ap_handler\n";
 
   visit([&ap] <typename GorL> (GorL& gl) {
+      cerr << "adding a player: " <<  ap.id << " "
+           << ap.player.name << " " << ap.player.address << "\n";
       gl.players.insert({ap.id, ap.player});
     }, game_state.state);
 }
@@ -232,7 +202,6 @@ void RoboticClient::ap_handler(struct server_messages::AcceptedPlayer& ap)
 void RoboticClient::lobby_to_game()
 {
   using namespace display_messages;
-  
   game_state.state = visit([] <typename GorL> (GorL& gl) {
       if constexpr(same_as<struct Lobby, GorL>) {
         map<PlayerId, Score> scores;
@@ -253,9 +222,8 @@ void RoboticClient::lobby_to_game()
 // do we get send this message only when we joined a game that 
 void RoboticClient::gs_handler(struct server_messages::GameStarted& gs)
 {
+  cerr << "[game_handler] gs_handler\n";
   using namespace display_messages;
-  if (game_state.game_on)
-    return;
 
   game_state.observer = true;
 
@@ -270,9 +238,11 @@ void RoboticClient::apply_event(struct display_messages::Game& game,
                                 map<BombId, server_messages::Bomb>& bombs,
                                 const server_messages::EventVar& event)
 {
+  cerr << "[game_handler] apply event\n";
   using namespace server_messages;
   visit([&game, &bombs, this] <typename Ev> (const Ev & ev) {
       if constexpr(same_as<struct BombPlaced, Ev>) {
+        cerr << "add a bomb to bomb dict\n";
         bombs.insert({ev.id, {ev.position, game_state.timer}});
       } else if constexpr(same_as<struct BombExploded, Ev>) {
         bombs.erase(ev.id);
@@ -283,8 +253,11 @@ void RoboticClient::apply_event(struct display_messages::Game& game,
         for (Position pos : ev.blocks_destroyed)
           game.blocks.erase(pos);
       } else if constexpr(same_as<struct PlayerMoved, Ev>) {
+        cerr << "change pos of player " << ev.id << " to ("
+             << ev.position.first << ", " << ev.position.second << ")\n";
         game.player_positions[ev.id] = ev.position;
       } else if constexpr(same_as<struct BlockPlaced, Ev>) {
+        cerr << "placing a block\n";
         game.blocks.insert(ev.position);
       } else {
         static_assert(always_false_v<Ev>, "Non-exhaustive pattern matching!");
@@ -294,6 +267,7 @@ void RoboticClient::apply_event(struct display_messages::Game& game,
 
 void RoboticClient::turn_handler(struct server_messages::Turn& turn)
 {
+  cerr << "[game_handler] turn handler\n";
   lobby_to_game();
   struct display_messages::Game& current_game =
     get<struct display_messages::Game>(game_state.state);
@@ -307,7 +281,27 @@ void RoboticClient::turn_handler(struct server_messages::Turn& turn)
   for (auto& [_, bomb] : game_state.bombs)
     --bomb.timer;
 }
-void RoboticClient::ge_handler(struct server_messages::GameEnded&) {}
+
+// TODO: what to do with the scores? we go into lobby state do we not
+void RoboticClient::ge_handler(struct server_messages::GameEnded&)
+{
+  cerr << "[game_handler] ge_handler\n";
+  using namespace display_messages;
+  game_state.game_on = false;
+  game_state.bombs = {};
+
+  game_state.state = visit([this] <typename GorL> (GorL& gl) {
+      if constexpr(same_as<struct Lobby, GorL>) {
+        return DisplayMessage{gl};
+      } else if constexpr(same_as<struct Game, GorL>) {
+        struct Lobby l{gl.server_name, game_state.players_count, gl.size_x,
+          gl.size_y, gl.game_length, game_state.explosion_radius, game_state.timer, {}};
+        return DisplayMessage{l};
+      } else {
+        static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
+      }
+    }, game_state.state);
+}
 
 void RoboticClient::pbm_handler(struct client_messages::PlaceBomb&) {}
 void RoboticClient::pbl_handler(struct client_messages::PlaceBlock&) {}
@@ -332,23 +326,6 @@ void RoboticClient::fill_bombs()
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
       }
     }, game_state.state);
-}
-
-InputMessage RoboticClient::recv_gui()
-{
-  lock_guard<mutex> lock{udp_mutex};
-  InputMessage msg;
-  gui_deser.readable().recv_from_sock(gui_socket);
-  gui_deser >> msg;
-  return msg;
-}
-
-void RoboticClient::send_gui()
-{
-  lock_guard<mutex> lock{udp_mutex};
-  fill_bombs();
-  server_ser << game_state.state;
-  gui_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
 }
 
 // Implementation of the server message handlers. Sadly there's no pattern
@@ -402,46 +379,113 @@ ClientMessage RoboticClient::input_to_client(input_messages::InputMessage& msg)
 
 // upon receiving first input from the gui we should send Join(name) to the
 // server unless the game is already on and we only observe it.
-void RoboticClient::gui_to_server()
+void RoboticClient::gui_to_server(stop_token stoken)
 {
   // We start engaging with the server only after receiving (valid) input
   // and if we are not observers. Is such a loop good here? I think so...
   using namespace client_messages;
+
+  // unique_lock<mutex> lk{wait_mutex};
+  // cv_gui.wait(lk);
+
+  cerr << "gui_to_server: start\n";
   ClientMessage msg;
   
   for (;;) {
     try {
+      cerr << "[input_handler] waiting for input from gui...\n";
       gui_deser.readable().recv_from_sock(gui_socket);
-      if (!game_state.observer)
-        break;
+      cerr << "[input_handler] got first input\n";
+      break;
     } catch (exception& ignored) {}
   }
 
+  cerr << "[input_handler] sending Join(" << name << ")\n";
   struct Join j(name);
   msg = j;
   server_ser << msg;
   server_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
 
-  do {
+  for (;;) {
     InputMessage inp;
+    cerr << "[input_handler] waiting for input\n";
     gui_deser.readable().recv_from_sock(gui_socket);
+
+    if (stoken.stop_requested()) {
+      cerr << "[input_handler] au revoir?";
+      return;
+    }
+
     gui_deser >> inp;
     msg = input_to_client(inp);
     server_ser << msg;
+    cerr << "[input_handler] sending input to the server\n";
     server_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
-  } while (game_state.game_on);
+  }
 }
 
-void RoboticClient::server_to_gui()
+void RoboticClient::server_to_gui(stop_token stoken, jthread& input_handler)
 {
   ServerMessage updt;
   DisplayMessage msg;
+
+  cerr << "[game_handler] server_to_gui running\n";
   for (;;) {
+    if (stoken.stop_requested())
+      return;
+
+    cerr << "[game_handler] tying to read a message from server\n";
     server_deser >> updt;
+    cerr << "[game_handler] message read\n";
     server_msg_handler(updt);
+
+    // todo: server seeminhly sends a lot of shit to us and only after we say Hello to it
+    // eg it sends 
+
+    // if (game_state.observer) {
+    //   cerr << "[game_handler] asking input handler to stop!\n";
+    //   input_handler.request_stop();
+    // }
+
+    if (!game_state.game_on) {
+      cerr << "[game_handler] end of game!\n";
+      gui_ser << game_state.state;
+      gui_socket.send(boost::asio::buffer(gui_ser.drain_bytes()));
+      input_handler.request_stop();
+      return;
+    }
+
+    fill_bombs();
     gui_ser << game_state.state;
+    cerr << "[game_handler] sending " << gui_ser.size() << " bytes to gui\n";
     gui_socket.send(boost::asio::buffer(gui_ser.drain_bytes()));
   }
+}
+
+// we play while we can innit
+void RoboticClient::play()
+{
+  for (;;)
+    play_game();
+}
+
+// playing a single game
+void RoboticClient::play_game()
+{
+  game_state.game_on = true;
+  cerr << "playing a game innit\n";
+  jthread input_handler([this] (stop_token stoken) {
+    cerr << "[input_handler] is running!\n";
+    gui_to_server(stoken);
+  });
+
+  jthread game_handler([this, &input_handler] (stop_token stoken) {
+    cerr << "[game_handler] is running!\n";
+    server_to_gui(stoken, input_handler);
+  });
+
+  game_handler.join();
+  input_handler.join();
 }
 
 // this will be used for sure.
@@ -484,7 +528,7 @@ int main(int argc, char* argv[])
          << "\tport=" << portnum << "\n";
 
     RoboticClient client(player_name, portnum, server_addr, gui_addr);
-    client.test();
+    client.play();
 
   } catch (po::required_option& e) {
     cerr << "Missing some options: " << e.what() << "\n";

@@ -38,6 +38,16 @@ concept Readable = requires (T x, size_t nbytes)
   // {x.eof()} -> std::convertible_to<bool>;
 };
 
+// This concepts ensures that type Seq represents an iterable sized container.
+// The constraints are not overly strong as I wanted to keep that simple.
+template <typename Seq>
+concept Iterable = requires (Seq seq)
+{
+  {seq.size()} -> std::integral;
+  {seq.cbegin()};
+  {seq.cend()};
+};
+
 // todo: comparing sizes instead of same_as? perhaps someone gives us an int
 // and that should be fine?
 // Byte order.
@@ -75,8 +85,18 @@ public:
   {
     out = {};
   }
-  
+
+  size_t size() const
+  {
+    return out.size();
+  }
+
   std::vector<uint8_t> to_bytes() const
+  {
+    return out;
+  }
+
+  std::vector<uint8_t>& to_bytes()
   {
     return out;
   }
@@ -117,34 +137,14 @@ public:
       out.push_back(static_cast<uint8_t>(c));
   }
 
-  template <typename T>
-  void ser(const std::vector<T>& seq)
+  template <Iterable Seq>
+  void ser(const Seq& seq)
   {
     uint32_t len = static_cast<uint32_t>(seq.size());
     ser(len);
 
-    for (const T& item : seq)
+    for (const auto& item : seq)
       *this << item;
-  }
-
-  template <typename T>
-  void ser(const std::set<T>& set)
-  {
-    uint32_t len = static_cast<uint32_t>(set.size());
-    ser(len);
-
-    for (const T& item : set)
-      *this << item;
-  }
-
-  template <typename K, typename V>
-  void ser(const std::map<K, V>& map)
-  {
-    uint32_t len = static_cast<uint32_t>(map.size());
-    ser(len);
-
-    for (const auto& [k, v] : map)
-      *this << k << v;
   }
 
   template <typename T1, typename T2>
