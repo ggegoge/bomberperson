@@ -283,12 +283,28 @@ void RoboticClient::turn_handler(struct server_messages::Turn& turn)
 }
 
 // TODO: what to do with the scores? we go into lobby state do we not
-void RoboticClient::ge_handler(struct server_messages::GameEnded&)
+void RoboticClient::ge_handler(struct server_messages::GameEnded& ge)
 {
   cerr << "[game_handler] ge_handler\n";
   using namespace display_messages;
   game_state.game_on = false;
   game_state.bombs = {};
+
+  const map<PlayerId, server_messages::Player>& players =
+    visit([] <typename GorL> (const GorL& gl) {
+      if constexpr(same_as<struct Lobby, GorL> || same_as<struct Game, GorL>) {
+        return gl.players;
+      } else {
+        static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
+      }
+    }, game_state.state);
+
+  cout << "GAME ENDED!!!\n";
+
+  for (auto [id, score] : ge.scores) {
+    cout << id << " " << players.at(id).name << "@" << players.at(id).address
+         << " got killed " << score << " times!\n";
+  }
 
   game_state.state = visit([this] <typename GorL> (GorL& gl) {
       if constexpr(same_as<struct Lobby, GorL>) {
@@ -400,7 +416,7 @@ void RoboticClient::input_handler(stop_token stoken)
     gui_deser >> inp;
     msg = input_to_client(inp);
     server_ser << msg;
-    cerr << "[input_handler] sending" << server_ser.size()
+    cerr << "[input_handler] sending " << server_ser.size()
          << " bytes of input to the server\n";
     server_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
   }
