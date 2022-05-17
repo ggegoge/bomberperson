@@ -1,9 +1,4 @@
-// Messages sent in our protocol.
-
-// TODO: reorganise the namespaces so that they are less messy?
-// one namespace robots? with sub name spaces perhaps?
-// or something else?
-// Also: enums -> capitals and drop the "struct"?
+// Messages sent in our protocol and (de)serialisers for them.
 
 #ifndef _MESSAGES_H_
 #define _MESSAGES_H_
@@ -60,8 +55,7 @@ struct Move {
   Move() : direction() {}
 };
 
-using ClientMessage =
-  std::variant<struct Join, struct PlaceBomb, struct PlaceBlock, struct Move>;
+using ClientMessage = std::variant<Join, PlaceBomb, PlaceBlock, Move>;
 
 }; // namespace client_message
 
@@ -76,12 +70,12 @@ struct Player {
 struct Bomb {
   Position position;
   uint16_t timer;
-  bool operator==(const struct Bomb& other) const
+  bool operator==(const Bomb& other) const
   {
     return position == other.position;
   }
 
-  auto operator<=>(const struct Bomb& other) const
+  auto operator<=>(const Bomb& other) const
   {
     return position <=> other.position;
   }
@@ -96,12 +90,12 @@ struct BombPlaced {
   BombId id;
   Position position;
 
-  bool operator==(const struct BombPlaced& other) const
+  bool operator==(const BombPlaced& other) const
   {
     return id == other.id;
   }
 
-  auto operator<=>(const struct BombPlaced& other) const
+  auto operator<=>(const BombPlaced& other) const
   {
     return id <=> other.id;
   }
@@ -123,9 +117,7 @@ struct PlayerMoved {
   Position position;
 };
 
-using EventVar =
-  std::variant<struct BombPlaced, struct BombExploded, struct PlayerMoved,
-        struct BlockPlaced>;
+using Event = std::variant<BombPlaced, BombExploded, PlayerMoved, BlockPlaced>;
 
 enum ServerMessageType {
   HELLO, ACCEPTED_PLAYER, GAME_STARTED, TURN, GAME_ENDED
@@ -155,15 +147,14 @@ struct GameStarted {
 
 struct Turn {
   uint16_t turn;
-  std::vector<EventVar> events;
+  std::vector<Event> events;
 };
 
 struct GameEnded {
   std::map<PlayerId, Score> scores;
 };
 
-using ServerMessage = std::variant<struct Hello, struct AcceptedPlayer,
-          struct GameStarted, struct Turn, struct GameEnded>;
+using ServerMessage = std::variant<Hello, AcceptedPlayer, GameStarted, Turn, GameEnded>;
 
 }; // namespace server_messagess
 
@@ -194,13 +185,12 @@ struct Game {
   std::map<PlayerId, server_messages::Player> players;
   std::map<PlayerId, Position> player_positions;
   std::set<Position> blocks;
-  // todo: better namespacing would be useful, namespace robots for the commons
   std::set<server_messages::Bomb> bombs;
   std::set<Position> explosions;
   std::map<PlayerId, Score> scores;
 };
 
-using DisplayMessage = std::variant<struct Lobby, struct Game>;
+using DisplayMessage = std::variant<Lobby, Game>;
 
 }; // namespace display_message
 
@@ -211,9 +201,8 @@ enum InputMessageType {
   PLACE_BOMB, PLACE_BLOCK, MOVE
 };
 
-using InputMessage =
-  std::variant<struct client_messages::PlaceBomb, struct client_messages::PlaceBlock,
-      struct client_messages::Move>;
+using InputMessage = std::variant<client_messages::PlaceBomb,
+                         client_messages::PlaceBlock, client_messages::Move>;
 
 }; // namespace input_messages
 

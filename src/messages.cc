@@ -24,55 +24,55 @@ using namespace display_messages;
 namespace
 {
 
-Serialiser& operator<<(Serialiser& ser, const struct Join& j)
+Serialiser& operator<<(Serialiser& ser, const Join& j)
 {
   return ser << j.name;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct PlaceBlock&)
+Serialiser& operator<<(Serialiser& ser, const PlaceBlock&)
 {
   return ser;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct PlaceBomb&)
+Serialiser& operator<<(Serialiser& ser, const PlaceBomb&)
 {
   return ser;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct Move& m)
+Serialiser& operator<<(Serialiser& ser, const Move& m)
 {
   return ser << m.direction;
 }
 
 // server messages
-Serialiser& operator<<(Serialiser& ser, const struct Hello& hello)
+Serialiser& operator<<(Serialiser& ser, const Hello& hello)
 {
   return ser << hello.server_name << hello.players_count
          << hello.size_x << hello.size_y << hello.game_length
          << hello.explosion_radius << hello.bomb_timer;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct Player& pl)
+Serialiser& operator<<(Serialiser& ser, const Player& pl)
 {
   return ser << pl.name << pl.address;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct AcceptedPlayer& ap)
+Serialiser& operator<<(Serialiser& ser, const AcceptedPlayer& ap)
 {
   return ser << ap.id << ap.player;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct GameStarted& gs)
+Serialiser& operator<<(Serialiser& ser, const GameStarted& gs)
 {
   return ser << gs.players;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct Turn& turn)
+Serialiser& operator<<(Serialiser& ser, const Turn& turn)
 {
   return ser << turn.turn << turn.events;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct GameEnded& ge)
+Serialiser& operator<<(Serialiser& ser, const GameEnded& ge)
 {
   return ser << ge.scores;
 }
@@ -82,33 +82,33 @@ Serialiser& operator<<(Serialiser& ser, const Position& position)
   return ser << position.first << position.second;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct Bomb& b)
+Serialiser& operator<<(Serialiser& ser, const Bomb& b)
 {
   return ser << b.position << b.timer;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct BombPlaced& bp)
+Serialiser& operator<<(Serialiser& ser, const BombPlaced& bp)
 {
   return ser << bp.id << bp.position;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct BombExploded& be)
+Serialiser& operator<<(Serialiser& ser, const BombExploded& be)
 {
   return ser << be.id << be.killed << be.blocks_destroyed;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct PlayerMoved& pm)
+Serialiser& operator<<(Serialiser& ser, const PlayerMoved& pm)
 {
   return ser << pm.id << pm.position;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct BlockPlaced& bp)
+Serialiser& operator<<(Serialiser& ser, const BlockPlaced& bp)
 {
   return ser << bp.position;
 }
 
 // next three should be in the anpn namespace but then i get warnings?....
-Serialiser& operator<<(Serialiser& ser, const EventVar& ev)
+Serialiser& operator<<(Serialiser& ser, const Event& ev)
 {
   uint8_t index = static_cast<uint8_t>(ev.index());
   return std::visit([&ser, index] <typename T> (const T& x) -> Serialiser& {
@@ -117,13 +117,13 @@ Serialiser& operator<<(Serialiser& ser, const EventVar& ev)
 }
 
 // display messages
-Serialiser& operator<<(Serialiser& ser, const struct Lobby& l)
+Serialiser& operator<<(Serialiser& ser, const Lobby& l)
 {
   return ser << l.server_name << l.players_count << l.size_x << l.size_y <<
          l.game_length << l.explosion_radius << l.bomb_timer << l.players;
 }
 
-Serialiser& operator<<(Serialiser& ser, const struct Game& g)
+Serialiser& operator<<(Serialiser& ser, const Game& g)
 {
   return ser << g.server_name << g.size_x << g.size_y << g.game_length << g.turn
              << g.players << g.player_positions << g.blocks << g.bombs
@@ -187,20 +187,20 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Join& j)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Join& j)
 {
   return deser >> j.name;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Move& mv)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Move& mv)
 {
   return deser >> mv.direction;
 }
 
 // deserialisation of various server messages
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Hello& hello)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Hello& hello)
 {
   return deser >> hello.server_name >> hello.players_count
          >> hello.size_x >> hello.size_y >> hello.game_length
@@ -208,31 +208,31 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Hello& hello)
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Player& pl)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Player& pl)
 {
   return deser >> pl.name >> pl.address;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct AcceptedPlayer& ap)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, AcceptedPlayer& ap)
 {
   return deser >> ap.id >> ap.player;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct GameStarted& gs)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, GameStarted& gs)
 {
   return deser >> gs.players;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Turn& turn)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Turn& turn)
 {
   return deser >> turn.turn >> turn.events;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct GameEnded& ge)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, GameEnded& ge)
 {
   return deser >> ge.scores;
 }
@@ -244,63 +244,63 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, Position& position)
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct Bomb& b)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Bomb& b)
 {
   return deser >> b.position >> b.timer;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct BombPlaced& bp)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, BombPlaced& bp)
 {
   return deser >> bp.id >> bp.position;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct BombExploded& be)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, BombExploded& be)
 {
   return deser >> be.id >> be.killed >> be.blocks_destroyed;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct PlayerMoved& pm)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, PlayerMoved& pm)
 {
   return deser >> pm.id >> pm.position;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, struct BlockPlaced& bp)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, BlockPlaced& bp)
 {
   return deser >> bp.position;
 }
 
 template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, EventVar& ev)
+Deserialiser<R>& operator>>(Deserialiser<R>& deser, Event& ev)
 {
   uint8_t kind;
   deser >> kind;
 
   switch (kind) {
   case BOMB_EXPLODED: {
-    struct BombExploded be;
+    BombExploded be;
     deser >> be;
     ev = be;
     return deser;
   }
   case BOMB_PLACED: {
-    struct BombPlaced bp;
+    BombPlaced bp;
     deser >> bp;
     ev = bp;
     return deser;
   }
   case PLAYER_MOVED: {
-    struct PlayerMoved pm;
+    PlayerMoved pm;
     deser >> pm;
     ev = pm;
     return deser;
 
   }
   case BLOCK_PLACED: {
-    struct BlockPlaced bp;
+    BlockPlaced bp;
     deser >> bp;
     ev = bp;
     return deser;
@@ -323,23 +323,23 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, client_messages::ClientMessa
 
   switch (kind) {
   case client_messages::JOIN: {
-    struct Join j;
+    Join j;
     deser >> j;
     msg = j;
     return deser;
   }
   case client_messages::PLACE_BOMB: {
-    struct PlaceBomb pb;
+    PlaceBomb pb;
     msg = pb;
     return deser;
   }
   case client_messages::PLACE_BLOCK: {
-    struct PlaceBlock pb;
+    PlaceBlock pb;
     msg = pb;
     return deser;
   }
   case client_messages::MOVE: {
-    struct Move m;
+    Move m;
     deser >> m;
     msg = m;
     return deser;
@@ -359,31 +359,31 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
 
   switch (kind) {
   case HELLO: {
-    struct Hello hello;
+    Hello hello;
     deser >> hello;
     msg = hello;
     return deser;
   }
   case ACCEPTED_PLAYER: {
-    struct AcceptedPlayer ap;
+    AcceptedPlayer ap;
     deser >> ap;
     msg = ap;
     return deser;
   }
   case GAME_STARTED: {
-    struct GameStarted gs;
+    GameStarted gs;
     deser >> gs;
     msg = gs;
     return deser;
   }
   case TURN: {
-    struct Turn turn;
+    Turn turn;
     deser >> turn;
     msg = turn;
     return deser;
   }
   case GAME_ENDED: {
-    struct GameEnded ge;
+    GameEnded ge;
     deser >> ge;
     msg = ge;
     return deser;
@@ -404,17 +404,17 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, input_messages::InputMessage
   
   switch (kind) {
   case input_messages::PLACE_BOMB: {
-    struct PlaceBomb pb;
+    PlaceBomb pb;
     msg = pb;
     return deser;
   }
   case input_messages::PLACE_BLOCK: {
-    struct PlaceBlock pb;
+    PlaceBlock pb;
     msg = pb;
     return deser;
   }
   case input_messages::MOVE: {
-    struct Move mv;
+    Move mv;
     deser >> mv;
     msg = mv;
     return deser;

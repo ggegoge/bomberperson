@@ -139,9 +139,6 @@ private:
   // such update it should tell the gui to show what is going on appropriately.
   void game_handler();
 
-  // Variant to variant conversion.
-  ClientMessage input_to_client(InputMessage& msg);
-
   // Game'ise the lobby, changes the held game state appropriately.
   void lobby_to_game();
 
@@ -149,26 +146,30 @@ private:
   void fill_bombs();
 
   // Events affect the game.
-  void apply_event(struct display_messages::Game& game,
+  void apply_event(display_messages::Game& game,
                    map<BombId, server_messages::Bomb>& bombs,
-                   const server_messages::EventVar& event);
+                   const server_messages::Event& event);
 
+  // Variant to variant conversion, handles input messages.
+  ClientMessage input_to_client(InputMessage& msg);
+  
   // Handling of messages from the server.
-  void server_msg_handler(server_messages::ServerMessage& msg);
-  void hello_handler(struct server_messages::Hello& hello);
-  void ap_handler(struct server_messages::AcceptedPlayer& ap);
-  void gs_handler(struct server_messages::GameStarted& gs);
-  void turn_handler(struct server_messages::Turn& turn);
-  void ge_handler(struct server_messages::GameEnded& ge);
+  void server_msg_handler(ServerMessage& msg);
+
+  void hello_handler(server_messages::Hello& hello);
+  void ap_handler(server_messages::AcceptedPlayer& ap);
+  void gs_handler(server_messages::GameStarted& gs);
+  void turn_handler(server_messages::Turn& turn);
+  void ge_handler(server_messages::GameEnded& ge);
 };
 
 // todo: receiving some messages like AccP or Hello _during the game_ is UB...
-void RoboticClient::hello_handler(struct server_messages::Hello& h)
+void RoboticClient::hello_handler(server_messages::Hello& h)
 {
   cerr << "[game_handler] hello handler\n";
 
   using namespace display_messages;
-  struct Lobby l{h.server_name, h.players_count, h.size_x, h.size_y, h.game_length,
+  Lobby l{h.server_name, h.players_count, h.size_x, h.size_y, h.game_length,
     h.explosion_radius, h.bomb_timer, map<PlayerId, server_messages::Player>{}};
 
   game_state.timer = h.bomb_timer;
@@ -176,7 +177,7 @@ void RoboticClient::hello_handler(struct server_messages::Hello& h)
   game_state.players_count = h.players_count;
 }
 
-void RoboticClient::ap_handler(struct server_messages::AcceptedPlayer& ap)
+void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
 {
   cerr << "[game_handler] ap_handler\n";
 
@@ -189,15 +190,15 @@ void RoboticClient::lobby_to_game()
 {
   using namespace display_messages;
   game_state.state = visit([] <typename GorL> (GorL& gl) {
-      if constexpr(same_as<struct Lobby, GorL>) {
+      if constexpr(same_as<Lobby, GorL>) {
         map<PlayerId, Score> scores;
         for (auto& [plid, _] : gl.players)
           scores.insert({plid, 0});
 
-        struct Game g{gl.server_name, gl.size_x, gl.size_y, gl.game_length,
+        Game g{gl.server_name, gl.size_x, gl.size_y, gl.game_length,
           0, gl.players, {}, {}, {}, {}, scores};
         return DisplayMessage{g};
-      } else if constexpr(same_as<struct Game, GorL>) {
+      } else if constexpr(same_as<Game, GorL>) {
         return DisplayMessage{gl};
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
@@ -206,7 +207,7 @@ void RoboticClient::lobby_to_game()
 }
 
 // do we get send this message only when we joined a game that 
-void RoboticClient::gs_handler(struct server_messages::GameStarted& gs)
+void RoboticClient::gs_handler(server_messages::GameStarted& gs)
 {
   cerr << "[game_handler] gs_handler\n";
 
@@ -220,17 +221,17 @@ void RoboticClient::gs_handler(struct server_messages::GameStarted& gs)
   lobby_to_game();
 }
 
-void RoboticClient::apply_event(struct display_messages::Game& game,
+void RoboticClient::apply_event(display_messages::Game& game,
                                 map<BombId, server_messages::Bomb>& bombs,
-                                const server_messages::EventVar& event)
+                                const server_messages::Event& event)
 {
   cerr << "[game_handler] apply event\n";
 
   using namespace server_messages;
   visit([&game, &bombs, this] <typename Ev> (const Ev & ev) {
-      if constexpr(same_as<struct BombPlaced, Ev>) {
+      if constexpr(same_as<BombPlaced, Ev>) {
         bombs.insert({ev.id, {ev.position, game_state.timer}});
-      } else if constexpr(same_as<struct BombExploded, Ev>) {
+      } else if constexpr(same_as<BombExploded, Ev>) {
         bombs.erase(ev.id);
 
         for (PlayerId plid : ev.killed)
@@ -238,9 +239,9 @@ void RoboticClient::apply_event(struct display_messages::Game& game,
 
         for (Position pos : ev.blocks_destroyed)
           game.blocks.erase(pos);
-      } else if constexpr(same_as<struct PlayerMoved, Ev>) {
+      } else if constexpr(same_as<PlayerMoved, Ev>) {
         game.player_positions[ev.id] = ev.position;
-      } else if constexpr(same_as<struct BlockPlaced, Ev>) {
+      } else if constexpr(same_as<BlockPlaced, Ev>) {
         game.blocks.insert(ev.position);
       } else {
         static_assert(always_false_v<Ev>, "Non-exhaustive pattern matching!");
@@ -248,16 +249,16 @@ void RoboticClient::apply_event(struct display_messages::Game& game,
     }, event);
 }
 
-void RoboticClient::turn_handler(struct server_messages::Turn& turn)
+void RoboticClient::turn_handler(server_messages::Turn& turn)
 {
   cerr << "[game_handler] turn handler, turn=" << turn.turn << "\n";
 
   lobby_to_game();
-  struct display_messages::Game& current_game =
-    get<struct display_messages::Game>(game_state.state);
+  display_messages::Game& current_game =
+    get<display_messages::Game>(game_state.state);
   current_game.turn = turn.turn;
 
-  for (const server_messages::EventVar& ev : turn.events) {
+  for (const server_messages::Event& ev : turn.events) {
     apply_event(current_game, game_state.bombs, ev);
   }
 
@@ -267,7 +268,7 @@ void RoboticClient::turn_handler(struct server_messages::Turn& turn)
 }
 
 // TODO: what to do with the scores? we go into lobby state do we not
-void RoboticClient::ge_handler(struct server_messages::GameEnded& ge)
+void RoboticClient::ge_handler(server_messages::GameEnded& ge)
 {
   cerr << "[game_handler] ge_handler\n";
 
@@ -278,7 +279,7 @@ void RoboticClient::ge_handler(struct server_messages::GameEnded& ge)
 
   const map<PlayerId, server_messages::Player>& players =
     visit([] <typename GorL> (const GorL& gl) {
-      if constexpr(same_as<struct Lobby, GorL> || same_as<struct Game, GorL>) {
+      if constexpr(same_as<Lobby, GorL> || same_as<Game, GorL>) {
         return gl.players;
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
@@ -293,10 +294,10 @@ void RoboticClient::ge_handler(struct server_messages::GameEnded& ge)
   }
 
   game_state.state = visit([this] <typename GorL> (GorL& gl) {
-      if constexpr(same_as<struct Lobby, GorL>) {
+      if constexpr(same_as<Lobby, GorL>) {
         return DisplayMessage{gl};
-      } else if constexpr(same_as<struct Game, GorL>) {
-        struct Lobby l{gl.server_name, game_state.players_count, gl.size_x,
+      } else if constexpr(same_as<Game, GorL>) {
+        Lobby l{gl.server_name, game_state.players_count, gl.size_x,
           gl.size_y, gl.game_length, game_state.explosion_radius, game_state.timer, {}};
         return DisplayMessage{l};
       } else {
@@ -310,10 +311,10 @@ void RoboticClient::fill_bombs()
   using namespace display_messages;
 
   visit([this] <typename GorL> (GorL& gl) {
-      if constexpr(same_as<struct Lobby, GorL>) {
+      if constexpr(same_as<Lobby, GorL>) {
         // No bombs in the lobby.
         return;
-      } else if constexpr(same_as<struct Game, GorL>) {
+      } else if constexpr(same_as<Game, GorL>) {
         gl.bombs = {};
 
         for (auto& [_, bomb] : game_state.bombs) {
@@ -328,31 +329,30 @@ void RoboticClient::fill_bombs()
 
 // Implementation of the server message handlers. Sadly there's no pattern
 // matching in C++ (yet, we were born too early) so std::visit must do.
-void RoboticClient::server_msg_handler(server_messages::ServerMessage& msg)
+void RoboticClient::server_msg_handler(ServerMessage& msg)
 {
   using namespace server_messages;
   visit([this] <typename T> (T& x) {
-      if constexpr(same_as<T, struct Hello>)
+      if constexpr(same_as<T, Hello>)
         hello_handler(x);
-      else if constexpr(same_as<T, struct AcceptedPlayer>)
+      else if constexpr(same_as<T, AcceptedPlayer>)
         ap_handler(x);
-      else if constexpr(same_as<T, struct GameStarted>)
+      else if constexpr(same_as<T, GameStarted>)
         gs_handler(x);
-      else if constexpr(same_as<T, struct Turn>)
+      else if constexpr(same_as<T, Turn>)
         turn_handler(x);
-      else if constexpr(same_as<T, struct GameEnded>)
+      else if constexpr(same_as<T, GameEnded>)
         ge_handler(x);
       else
         static_assert(always_false_v<T>, "Non-exhaustive pattern matching!");
     }, msg);
 }
 
-ClientMessage RoboticClient::input_to_client(input_messages::InputMessage& msg)
+ClientMessage RoboticClient::input_to_client(InputMessage& msg)
 {
   using namespace client_messages;
   return visit([] <typename T> (T& x) {
-      if constexpr(same_as<T, struct PlaceBomb> || same_as<T, struct PlaceBlock> ||
-                   same_as<T, struct Move>)
+      if constexpr(same_as<T, PlaceBomb> || same_as<T, PlaceBlock> || same_as<T, Move>)
         return ClientMessage{x};
       else
         static_assert(always_false_v<T>, "Non-exhaustive pattern matching!");
@@ -381,7 +381,7 @@ void RoboticClient::input_handler()
     if (game_state.lobby) {
       cerr << "[input_handler] first input in the lobby --> trying to join\n";
       game_state.lobby = false;
-      struct Join j(name);
+      Join j(name);
       msg = j;
     } else {
       msg = input_to_client(inp);
