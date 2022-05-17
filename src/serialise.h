@@ -23,6 +23,7 @@
 #include <concepts>
 #include <vector>
 #include <map>
+#include <set>
 #include <string>
 #include <cstddef>
 #include <cstdint>
@@ -126,6 +127,16 @@ public:
       *this << item;
   }
 
+  template <typename T>
+  void ser(const std::set<T>& set)
+  {
+    uint32_t len = static_cast<uint32_t>(set.size());
+    ser(len);
+
+    for (const T& item : set)
+      *this << item;
+  }
+
   template <typename K, typename V>
   void ser(const std::map<K, V>& map)
   {
@@ -193,6 +204,20 @@ public:
       seq.push_back(x);
     }
   }
+
+  template <typename T>
+  void deser(std::set<T>& set)
+  {
+    uint32_t len;
+    deser(len);
+
+    for (uint32_t i = 0; i < len; ++i) {
+      T x;
+      *this >> x;
+      set.insert(x);
+    }
+  }
+
 
   template <typename K, typename V>
   void deser(std::map<K, V>& map)
