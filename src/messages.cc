@@ -1,16 +1,16 @@
 // This file contains first and foremost implementation of important functions
 // declared at the bottom of the messages.h header -- serialisers and deserialisers
 // for messages sent by the client, server and the gui. They are all based on the
-// interface proposed in serialise.h with operators << and >> being the main and most
+// interface proposed in marshal.h with operators << and >> being the main and most
 // versatile method of deserialisation in our protocole.
-//
+
 // Note how most functions here are just chained applications of the operators on
-// all fields of chosen structs but unfortunately C++ does not provide a method
+// all fields of chosen structs. Unfortunately C++ does not provide a method
 // to easily do this (to have some "(de)serialise struct" abstraction) and that
 // is why most of the code here is boring and boilerplate.
 
 #include "readers.h"
-#include "serialise.h"
+#include "marshal.h"
 #include "messages.h"
 #include <algorithm>
 #include <cstdint>

@@ -1,7 +1,4 @@
-
-#include "readers.h"
-#include "serialise.h"
-#include "messages.h"
+// Implementation of a client for the robots game.
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
@@ -13,6 +10,7 @@
 #include <boost/program_options/errors.hpp>
 #include <map>
 #include <thread>
+#include <tuple>
 #include <type_traits>
 #include <regex>
 #include <cstddef>
@@ -23,6 +21,10 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+#include "readers.h"
+#include "marshal.h"
+#include "messages.h"
 
 namespace po = boost::program_options;
 

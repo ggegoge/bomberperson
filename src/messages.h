@@ -14,7 +14,11 @@
 #include <string>
 #include <vector>
 
-#include "serialise.h"
+#include "marshal.h"
+
+// todo: std tuple and usings instead of structs and thus easier serialisation?
+// but then using std::get everywhere would be a nigthmare, wouldn't it?
+// decomposition though?
 
 using PlayerId = uint8_t;
 using BombId = uint32_t;

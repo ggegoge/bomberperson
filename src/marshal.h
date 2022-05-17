@@ -1,12 +1,14 @@
-// Module with all things related to serialising and deserialising data.
-// It serialises data types according with the robots protocol.
-// In this module only basic serialisation is handled but it is extensible
-// to be used with other complex structures. It relies heavily on overloading
-// the >> and << operators so if you provide your overloaded versions of those
-// for different types then this can work.
+// Marshalling and unmarshalling of data.
 
-#ifndef _SERIALISE_H_
-#define _SERIALISE_H_
+// It serialises data types according to simple protocol. Here only basic
+// serialisation is handled but this serves as an extensible layer of
+// abstraction (aka marshalling framework) that can still be used with other
+// complex structures. It relies heavily on overloading the >> and << operators
+// so if you provide your overloaded versions of those for different types then
+// this can still work for them. You can see it done in messages.h/cc.
+
+#ifndef _MARSHAL_H_
+#define _MARSHAL_H_
 
 // There are problems on macos with changing the byte order.
 #ifdef __MACH__
@@ -22,6 +24,7 @@
 
 #include <concepts>
 #include <vector>
+#include <tuple>
 #include <map>
 #include <set>
 #include <string>
@@ -49,7 +52,7 @@ concept Iterable = requires (Seq seq)
 
 // todo: comparing sizes instead of same_as? perhaps someone gives us an int
 // and that should be fine?
-// Byte order.
+// Changing the byte order. Numbers are serialised in the network order.
 template <typename T>
 constexpr T hton(T num)
 {
@@ -146,12 +149,20 @@ public:
       *this << item;
   }
 
+  // Note: thank's to this function map is also serialisable due to being and
+  // iterable of key-value pairs.
   template <typename T1, typename T2>
   void ser(const std::pair<T1, T2>& pair)
   {
     *this << pair.first << pair.second;
   }
-  
+
+  template <typename ... Ts>
+  void ser(const std::tuple<Ts...>& tuple)
+  {
+    std::apply([this] (auto... v) { ( *this << ... << v); }, tuple);
+  }
+
   template <typename T>
   Serialiser& operator<<(const T& item)
   {
@@ -191,6 +202,7 @@ public:
     str.assign(reinterpret_cast<char*>(bytes.data()), len);
   }
 
+  // todo: template for iterable like above?
   template <typename T>
   void deser(std::vector<T>& seq)
   {
@@ -246,4 +258,4 @@ public:
   }
 };
 
-#endif  // _SERIALISE_H_
+#endif  // _MARSHAL_H_

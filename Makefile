@@ -14,10 +14,9 @@ all: robots-client
 robots-client: $(CLIENT_OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
-src/robots-client.o: src/robots-client.cc src/serialise.h src/readers.h src/messages.h
+src/robots-client.o: src/robots-client.cc src/marshal.h src/readers.h src/messages.h
 
-src/sockets.o: src/sockets.cc src/sockets.h
-src/messages.o: src/messages.cc src/messages.h src/serialise.h
+src/messages.o: src/messages.cc src/messages.h src/marshal.h
 
 clean:
 	-rm -f $(CLIENT_OBJS)
