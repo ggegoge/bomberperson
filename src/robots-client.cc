@@ -58,9 +58,6 @@ namespace {
 // Helper for visiting, inspired by cppref.
 template<typename> inline constexpr bool always_false_v = false;
 
-
-// Current state of the game. Similar to struct Game, innit?
-// Perhaps it is not necessary and I should simply...
 struct GameState {
   DisplayMessage state;
   // this bool will tell us whether to ignore the gui input or not.
@@ -96,7 +93,7 @@ class RoboticClient {
   Serialiser gui_ser;
   Deserialiser<ReaderTCP> server_deser;
   Deserialiser<ReaderUDP> gui_deser;
-  GameState gs;
+  GameState game_state;
   mutex udp_mutex;
 public:
   RoboticClient(const string& name, uint16_t portnum,
@@ -172,6 +169,17 @@ public:
   void server_to_gui();
 
 private:
+  // Utilities?
+
+  // Variant to variant conversion.
+  ClientMessage input_to_client(InputMessage& msg);
+
+  // Game'ise the lobby, changes the held game state appropriately.
+  void lobby_to_game();
+
+  // Events affect the game
+  void apply_event(struct display_messages::Game& game, server_messages::EventVar& ev);
+
   // Handling of messages from the server.
   void server_msg_handler(server_messages::ServerMessage& msg);
   void hello_handler(struct server_messages::Hello& hello);
@@ -181,11 +189,7 @@ private:
   void ge_handler(struct server_messages::GameEnded& ge);
 
   // Handling of messages from the gui.
-  void input_msg_handler(input_messages::InputMessage& msg);
-
-  // Variant to variant conversion.
-  ClientMessage input_to_client(InputMessage& msg);
-  
+  void input_msg_handler(input_messages::InputMessage& msg);  
   void pbm_handler(struct client_messages::PlaceBomb& pbm);
   void pbl_handler(struct client_messages::PlaceBlock& pbl);
   void mv_handler(struct client_messages::Move& mv);
@@ -196,10 +200,100 @@ private:
 };
 
 // TODO
-void RoboticClient::hello_handler(struct server_messages::Hello&) {}
-void RoboticClient::ap_handler(struct server_messages::AcceptedPlayer&) {}
-void RoboticClient::gs_handler(struct server_messages::GameStarted&) {}
-void RoboticClient::turn_handler(struct server_messages::Turn&) {}
+// Can we assume we get hello only when game is already on?...
+void RoboticClient::hello_handler(struct server_messages::Hello& h)
+{
+  using namespace display_messages;
+  // Ignoring Hello when the game is already on.
+  if (game_state.game_on)
+    return;
+
+  struct Lobby l{h.server_name, h.players_count, h.size_x, h.size_y, h.game_length,
+    h.explosion_radius, h.bomb_timer, map<PlayerId, server_messages::Player>{}};
+
+  game_state.state = l;
+}
+
+void RoboticClient::ap_handler(struct server_messages::AcceptedPlayer& ap)
+{
+  if (game_state.game_on)
+    return;
+
+  visit([&ap] <typename GorL> (GorL& gl) {
+      gl.players.insert({ap.id, ap.player});
+    }, game_state.state);
+}
+
+void RoboticClient::lobby_to_game()
+{
+  using namespace display_messages;
+  
+  game_state.state = visit([] <typename GorL> (GorL& gl) {
+      if constexpr(same_as<struct Lobby, GorL>) {
+        map<PlayerId, Score> scores;
+        for (auto& [plid, _] : gl.players)
+          scores.insert({plid, 0});
+
+        struct Game g{gl.server_name, gl.size_x, gl.size_y, gl.game_length,
+          0, gl.players, {}, {}, {}, {}, scores};
+        return DisplayMessage{g};
+      } else if constexpr(same_as<struct Game, GorL>) {
+        return DisplayMessage{gl};
+      } else {
+        static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
+      }
+    }, game_state.state);
+}
+
+// do we get send this message only when we joined a game that 
+void RoboticClient::gs_handler(struct server_messages::GameStarted& gs)
+{
+  using namespace display_messages;
+  if (game_state.game_on)
+    return;
+
+  game_state.observer = true;
+
+  visit([&gs] <typename GorL> (GorL& gl) {
+      gl.players = gs.players;
+    }, game_state.state);
+
+  lobby_to_game();
+}
+
+void RoboticClient::apply_event(struct display_messages::Game& game,
+                                server_messages::EventVar& event)
+{
+  using namespace server_messages;
+  visit([&game] <typename Ev> (Ev& ev) {
+      if constexpr(same_as<struct BombPlaced, Ev>) {
+        // TODO: I need to have a map BombId -> Bomb...
+        // needed for handling explosions etc
+      } else if constexpr(same_as<struct BombExploded, Ev>) {
+        // TODO like above
+      } else if constexpr(same_as<struct PlayerMoved, Ev>) {
+        game.player_positions[ev.id] = ev.position;
+      } else if constexpr(same_as<struct BlockPlaced, Ev>) {
+        // TODO: keep a set of block for easier destroying etc?
+        // Actually could keep "List" as a set right? Serialisation is the same.
+        game.blocks.push_back(ev.position);
+      } else {
+        static_assert(always_false_v<Ev>, "Non-exhaustive pattern matching!");
+      }
+    }, event);
+}
+
+void RoboticClient::turn_handler(struct server_messages::Turn& turn)
+{
+  lobby_to_game();
+  struct display_messages::Game& current_game =
+    get<struct display_messages::Game>(game_state.state);
+  current_game.turn = turn.turn;
+
+  for (server_messages::EventVar& ev : turn.events) {
+    apply_event(current_game, ev);
+  }
+}
 void RoboticClient::ge_handler(struct server_messages::GameEnded&) {}
 
 void RoboticClient::pbm_handler(struct client_messages::PlaceBomb&) {}
@@ -219,7 +313,7 @@ InputMessage RoboticClient::recv_gui()
 void RoboticClient::send_gui()
 {
   lock_guard<mutex> lock{udp_mutex};
-  server_ser << gs.state;
+  server_ser << game_state.state;
   gui_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
 }
 
@@ -284,7 +378,7 @@ void RoboticClient::gui_to_server()
   for (;;) {
     try {
       gui_deser.readable().recv_from_sock(gui_socket);
-      if (!gs.observer)
+      if (!game_state.observer)
         break;
     } catch (exception& ignored) {}
   }
@@ -301,7 +395,7 @@ void RoboticClient::gui_to_server()
     msg = input_to_client(inp);
     server_ser << msg;
     server_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
-  } while (gs.game_on);
+  } while (game_state.game_on);
 }
 
 void RoboticClient::server_to_gui()
@@ -311,7 +405,7 @@ void RoboticClient::server_to_gui()
   for (;;) {
     server_deser >> updt;
     server_msg_handler(updt);
-    gui_ser << gs.state;
+    gui_ser << game_state.state;
     gui_socket.send(boost::asio::buffer(gui_ser.drain_bytes()));
   }
 }
