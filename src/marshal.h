@@ -5,7 +5,7 @@
 // abstraction (aka marshalling framework) that can still be used with other
 // complex structures. It relies heavily on overloading the >> and << operators
 // so if you provide your overloaded versions of those for different types then
-// this can still work for them. You can see it done in messages.h/cc.
+// this can still work for them. You can see it done in messages.h.
 
 #ifndef _MARSHAL_H_
 #define _MARSHAL_H_
@@ -22,12 +22,15 @@
 // htonl and htons
 #include <arpa/inet.h>
 
+#include <exception>
+#include <stdexcept>
 #include <concepts>
+#include <variant>
+#include <string>
 #include <vector>
 #include <tuple>
 #include <map>
 #include <set>
-#include <string>
 #include <cstddef>
 #include <cstdint>
 
@@ -54,7 +57,7 @@ concept Iterable = requires (Seq seq)
 // and that should be fine?
 // Changing the byte order. Numbers are serialised in the network order.
 template <typename T>
-constexpr T hton(T num)
+inline constexpr T hton(T num)
 {
   if constexpr (std::same_as<T, uint64_t>)
     return be64toh(num);
@@ -67,7 +70,7 @@ constexpr T hton(T num)
 }
 
 template <typename T>
-constexpr T ntoh(T num)
+inline constexpr T ntoh(T num)
 {
   if constexpr (std::is_same_v<T, uint64_t>)
     return htobe64(num);
@@ -78,6 +81,14 @@ constexpr T ntoh(T num)
   else
     return num;
 }
+
+// Unmarshalling may fail whereas Marshalling is our protocol infalliable.
+class UnmarshallingError : public std::runtime_error {
+public:
+  UnmarshallingError()
+    : std::runtime_error("Error in unmarshalling!") {}
+  UnmarshallingError(const std::string& msg) : std::runtime_error(msg) {}
+};
 
 // Class for data serialisation.
 class Serialiser {
@@ -157,10 +168,22 @@ public:
     *this << pair.first << pair.second;
   }
 
-  template <typename ... Ts>
+  template <typename... Ts>
   void ser(const std::tuple<Ts...>& tuple)
   {
     std::apply([this] (const auto&... v) { ( *this << ... << v); }, tuple);
+  }
+
+  // Note: this is the only type we do not have a generic deserialiser for as
+  // there is no easy way to contruct a variant from index.
+  template <typename... Ts>
+  void ser(const std::variant<Ts...>& var)
+  {
+    uint8_t index = static_cast<uint8_t>(var.index());
+    std::visit([this, index] <typename T> (const T& x) {
+        ser(index);
+        *this << x;
+      }, var);
   }
 
   template <typename T>
@@ -190,19 +213,28 @@ public:
   template <std::integral T>
   void deser(T& item) requires (!std::is_enum_v<T>)
   {
-    std::vector<uint8_t> buff = r.read(sizeof(T));
-    item = ntoh<T>(*(T*)(buff.data()));
+    try {
+      std::vector<uint8_t> buff = r.read(sizeof(T));
+      item = ntoh<T>(*(T*)(buff.data()));
+    } catch (std::exception& e) {
+      throw UnmarshallingError("Failed to unmarshall an integral item!");
+    }
   }
   
   void deser(std::string& str)
   {
-    uint8_t len;
-    deser(len);
-    std::vector<uint8_t> bytes = r.read(len);
-    str.assign(reinterpret_cast<char*>(bytes.data()), len);
+    try {
+      uint8_t len;
+      deser(len);
+      std::vector<uint8_t> bytes = r.read(len);
+      str.assign(reinterpret_cast<char*>(bytes.data()), len);
+    } catch (UnmarshallingError& e) {
+      throw;
+    } catch (std::exception& e) {
+      throw UnmarshallingError("Failed to unmarshall a string!");
+    }
   }
 
-  // todo: template for iterable like above?
   template <typename T>
   void deser(std::vector<T>& seq)
   {
@@ -229,7 +261,6 @@ public:
     }
   }
 
-
   template <typename K, typename V>
   void deser(std::map<K, V>& map)
   {
@@ -250,10 +281,22 @@ public:
     *this >> pair.first >> pair.second;
   }
 
-  template <typename ... Ts>
+  template <typename... Ts>
   void deser(std::tuple<Ts...>& tuple)
   {
     std::apply([this] (auto&... v) { ( *this >> ... >> v); }, tuple);
+  }
+
+  template <typename... Ts>
+  void deser(std::variant<Ts...>& var)
+  {
+    using Var = std::variant<Ts...>;
+    uint8_t kind;
+    deser(kind);
+    var = variant_from_index<Var>(kind);
+    std::visit([this] <typename T> (T& x) {
+        *this >> x;
+      }, var);
   }
 
   template <typename T>
@@ -261,6 +304,21 @@ public:
   {
     deser(item);
     return *this;
+  }
+
+private:
+  // Helper function for creating a variant from chosen index.
+  // source: https://stackoverflow.com/a/60567091/9058764
+  template <class Var, std::size_t I = 0>
+  Var variant_from_index(std::size_t index)
+  {
+	if constexpr(I >= std::variant_size_v<Var>) {
+      throw std::runtime_error{"Wrong variant!"};
+	} else {
+		return index == 0
+          ? Var{std::in_place_index<I>}
+          : variant_from_index<Var, I + 1>(index - 1);
+    }
   }
 };
 

@@ -1,4 +1,9 @@
 // Messages sent in our protocol and (de)serialisers for them.
+//
+// I do not use structs or classes but tuples, pairs and aliases on purpose:
+// with marshal.h you can marshal and unmarshal tuples etc without writing any
+// extra adapters whereas if structs were to be used then it would be necessary
+// to write another overloads for each one of them.
 
 #ifndef _MESSAGES_H_
 #define _MESSAGES_H_
@@ -10,7 +15,6 @@
 #include <variant>
 #include <map>
 #include <set>
-#include <unordered_set>
 #include <tuple>
 #include <string>
 #include <vector>
@@ -22,23 +26,32 @@ using BombId = uint32_t;
 using Position = std::pair<uint16_t, uint16_t>;
 using Score = uint32_t;
 
-class DeserProtocolError : public std::runtime_error {
-public:
-  DeserProtocolError()
-    : std::runtime_error("Error in deserialisaion according to robots protocol") {}
-  DeserProtocolError(const std::string& msg) : std::runtime_error(msg) {}
-};
-
 namespace client_messages
 {
-
-enum ClientMessageType {
-  JOIN, PLACE_BOMB, PLACE_BLOCK, MOVE
-};
 
 enum Direction {
   UP, RIGHT, DOWN, LEFT,
 };
+
+// Our marshalling module does not provide a generlised way of safe (ie range checked)
+// enum deserialsation.
+template <Readable R>
+inline Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
+{
+  uint8_t dir;
+  deser >> dir;
+  d = static_cast<Direction>(dir);
+  switch (dir) {
+  case UP:
+  case RIGHT:
+  case DOWN:
+  case LEFT:
+    return deser;
+
+  default:
+    throw UnmarshallingError("Invalid direction!");
+  }
+}
 
 // Join(name)
 using Join = std::string;
@@ -46,6 +59,15 @@ using Join = std::string;
 // Placeholders.
 struct PlaceBomb {};
 struct PlaceBlock {};
+
+// Adapters for (un)marshalling to work on those empty structs.
+inline Serialiser& operator<<(Serialiser& ser, const PlaceBlock&) { return ser; }
+inline Serialiser& operator<<(Serialiser& ser, const PlaceBomb&) { return ser; }
+template <Readable R>
+inline Deserialiser<R>& operator>>(Deserialiser<R>& deser, PlaceBlock&) { return deser; }
+template <Readable R>
+inline Deserialiser<R>& operator>>(Deserialiser<R>& deser, PlaceBomb&) { return deser; }
+
 
 // Move(direction)
 using Move = Direction;
@@ -63,10 +85,6 @@ using Player = std::pair<std::string, std::string>;
 // Bomb(position, timer)
 using Bomb = std::pair<Position, uint16_t>;
 
-enum EventType {
-  BOMB_PLACED, BOMB_EXPLODED, PLAYER_MOVED, BLOCK_PLACED
-};
-
 // BombPlaced(id, position)
 using BombPlaced = std::pair<BombId, Position>;
 
@@ -81,10 +99,6 @@ using PlayerMoved = std::pair<PlayerId, Position>;
 
 using Event = std::variant<BombPlaced, BombExploded, PlayerMoved, BlockPlaced>;
 
-enum ServerMessageType {
-  HELLO, ACCEPTED_PLAYER, GAME_STARTED, TURN, GAME_ENDED
-};
-
 // Hello(serv_name, players_count, size_x, size_y, game_length, radius, timer)
 using Hello =
   std::tuple<std::string, uint8_t, uint16_t, uint16_t, uint16_t, uint16_t, uint16_t>;
@@ -94,7 +108,6 @@ using AcceptedPlayer = std::pair<PlayerId, Player>;
 
 // GameStarted(players)
 using GameStarted = std::map<PlayerId, Player>;
-
 
 // Turn(turnno, events)
 using Turn = std::pair<uint16_t, std::vector<Event>>;
@@ -108,10 +121,6 @@ using ServerMessage = std::variant<Hello, AcceptedPlayer, GameStarted, Turn, Gam
 
 namespace display_messages
 {
-
-enum DisplayMessageType {
-  LOBBY, GAME
-};
 
 // Lobby(serv_name, players_count, size_x, size_y, game_length, radius, timer, players)
 using Lobby =
@@ -133,35 +142,9 @@ using DisplayMessage = std::variant<Lobby, Game>;
 namespace input_messages
 {
 
-enum InputMessageType {
-  PLACE_BOMB, PLACE_BLOCK, MOVE
-};
-
 using InputMessage = std::variant<client_messages::PlaceBomb,
                          client_messages::PlaceBlock, client_messages::Move>;
 
 }; // namespace input_messages
-
-// For display messages I need only serialisation as I only send those messages.
-Serialiser& operator<<(Serialiser& ser, const display_messages::DisplayMessage& msg);
-
-// For input messages I actually only need deserialisation as I only receive those
-// but for now serialisation is also implemented for testing purposes.
-Serialiser& operator<<(Serialiser& ser, const input_messages::InputMessage& msg);
-
-template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, input_messages::InputMessage& msg);
-
-// Serialisation and deserialisation of client messages.
-Serialiser& operator<<(Serialiser& ser, const client_messages::ClientMessage& msg);
-
-template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, client_messages::ClientMessage& msg);
-
-// Serialisation and deserialisation of server messages.
-Serialiser& operator<<(Serialiser& ser, const server_messages::ServerMessage& msg);
-
-template <Readable R>
-Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessage& msg);
 
 #endif  // _MESSAGES_H_

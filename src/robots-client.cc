@@ -40,6 +40,8 @@ using display_messages::DisplayMessage;
 using server_messages::ServerMessage;
 using client_messages::ClientMessage;
 
+namespace {
+
 // todo: add trying and catching of that wherever it is advisable!
 class ClientError : public std::runtime_error {
 public:
@@ -48,9 +50,6 @@ public:
 
   ClientError(const std::string& msg) : std::runtime_error(msg) {}
 };
-
-
-namespace {
 
 // Helper for visiting mimicking pattern matching, inspired by cppref.
 template<typename> inline constexpr bool always_false_v = false;
@@ -74,7 +73,15 @@ pair<string, string> get_addr(const string& addr)
   smatch sm;
 
   if (regex_search(addr, sm, r)) {
-    return {sm[1].str(), sm[2].str()};
+    string ip = sm[1].str();
+
+    // allow IPv6 adresses like [::1]?
+    if (ip.at(0) == '[') {
+      ip = ip.substr(1, ip.length() - 2);
+    }
+
+    string port = sm[2].str();
+    return {ip, port};
   } else {
     throw ClientError("Invalid address!");
   }
@@ -85,26 +92,20 @@ template <typename T>
 requires (same_as<T, display_messages::Lobby> || same_as<T, display_messages::Game>)
 map<PlayerId, server_messages::Player>& state_get_players(T& gl)
 {
-  if constexpr(same_as<T, display_messages::Lobby>) {
-    auto& [_1, _2, _3, _4, _5, _6, _7, players] = gl;
-    return players;
-  } else if constexpr(same_as<T, display_messages::Game>) {
-    auto& [_1, _2, _3, _4, _5, players, _7, _8, _9, _10, _11] = gl;
-    return players;
-  }
+  if constexpr(same_as<T, display_messages::Lobby>)
+    return get<7>(gl);
+  else if constexpr(same_as<T, display_messages::Game>)
+    return get<5>(gl);
 }
 
 template <typename T>
 requires (same_as<T, display_messages::Lobby> || same_as<T, display_messages::Game>)
 const map<PlayerId, server_messages::Player>& state_get_players(const T& gl)
 {
-  if constexpr(same_as<T, display_messages::Lobby>) {
-    auto& [_1, _2, _3, _4, _5, _6, _7, players] = gl;
-    return players;
-  } else if constexpr(same_as<T, display_messages::Game>) {
-    auto& [_1, _2, _3, _4, _5, players, _7, _8, _9, _10, _11] = gl;
-    return players;
-  }
+  if constexpr(same_as<T, display_messages::Lobby>)
+    return get<7>(gl);
+  else if constexpr(same_as<T, display_messages::Game>)
+    return get<5>(gl);
 }
 
 
@@ -122,8 +123,6 @@ std::set<Position>& game_get_explosions(display_messages::Game& game)
 {
   return get<9>(game);
 }
-
-};
 
 class RoboticClient {
   boost::asio::io_context io_ctx;
@@ -233,8 +232,9 @@ void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
   using namespace display_messages;
   visit([&ap] <typename GorL> (GorL& gl) {
       auto& [id, player] = ap;
+      cerr << "[ap_handler]: new player " << player.first
+           << "@" << player.second << "\n";
       state_get_players(gl).insert({id, player});
-      cerr << state_get_players(gl).at(id).first << "\n";
     }, game_state.state);
 }
 
@@ -271,7 +271,6 @@ void RoboticClient::gs_handler(server_messages::GameStarted& gs)
 
   visit([&gs] <typename GorL> (GorL& gl) {
       state_get_players(gl) = gs;
-      cerr << gs.at(0).first << "\n";
     }, game_state.state);
 
   lobby_to_game();
@@ -281,11 +280,11 @@ void RoboticClient::apply_event(display_messages::Game& game,
                                 map<BombId, server_messages::Bomb>& bombs,
                                 const server_messages::Event& event)
 {
-  cerr << "[game_handler] apply event\n";
-
   using namespace server_messages;
   visit([&game, &bombs, this] <typename Ev> (const Ev& ev) {
-      auto& [_1, _2, _3, _4, _5, _6, player_positions, blocks, _9, explosions, scores] = game;
+      auto& [_1, _2, _3, _4, _5, _6,
+             player_positions, blocks, _9, explosions, scores] = game;
+
       if constexpr(same_as<BombPlaced, Ev>) {
         auto& [id, position] = ev;
         bombs.insert({id, {position, game_state.timer}});
@@ -333,7 +332,6 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
   }
 }
 
-// TODO: what to do with the scores? we go into lobby state do we not
 void RoboticClient::ge_handler(server_messages::GameEnded& ge)
 {
   cerr << "[game_handler] ge_handler\n";
@@ -355,10 +353,11 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
   cout << "GAME ENDED!!!\n";
 
   for (auto [id, score] : ge) {
-    cout << id << " " << players.at(id).first << "@" << players.at(id).second
+    cout << id << "\t" << players.at(id).first << "@" << players.at(id).second
          << " got killed " << score << " times!\n";
   }
 
+  // new lobby based on what we know
   game_state.state = visit([this] <typename GorL> (GorL& gl) {
       if constexpr(same_as<Lobby, GorL>) {
         return DisplayMessage{gl};
@@ -386,10 +385,8 @@ void RoboticClient::fill_bombs()
       } else if constexpr(same_as<Game, GorL>) {
         game_get_bombs(gl) = {};
 
-        for (auto& [_, bomb] : game_state.bombs) {
-          // todo: insertion does not do anything if an object is already in
+        for (auto& [_, bomb] : game_state.bombs)
           game_get_bombs(gl).insert(bomb);
-        }
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
       }
@@ -428,13 +425,8 @@ ClientMessage RoboticClient::input_to_client(InputMessage& msg)
     }, msg);
 }
 
-
-// upon receiving first input from the gui we should send Join(name) to the
-// server unless the game is already on and we only observe it.
 void RoboticClient::input_handler()
 {
-  // We start engaging with the server only after receiving (valid) input
-  // and if we are not observers. Is such a loop good here? I think so...
   using namespace client_messages;
 
   ClientMessage msg;
@@ -444,8 +436,12 @@ void RoboticClient::input_handler()
     cerr << "[input_handler] waiting for input\n";
     // todo: add methods for recv and send etc that wrap around that?
     gui_deser.readable().recv_from_sock(gui_socket);
-    // todo: ignore invalid messages!
-    gui_deser >> inp;
+    try {
+      gui_deser >> inp;
+    } catch (UnmarshallingError& e) {
+      cerr << "[input_handler] ignoring invalid input from gui.\n";
+      continue;
+    }
 
     if (game_state.lobby) {
       cerr << "[input_handler] first input in the lobby --> trying to join\n";
@@ -470,7 +466,6 @@ void RoboticClient::game_handler()
 
   for (;;) {
     cerr << "[game_handler] tying to read a message from server\n";
-    // todo: disconnect upon receiving a bad message. Should try to reconnect?
     server_deser >> updt;
     cerr << "[game_handler] message read, proceeding to handle it!\n";
     server_msg_handler(updt);
@@ -482,19 +477,19 @@ void RoboticClient::game_handler()
   }
 }
 
-// we play while we can innit
 void RoboticClient::play()
 {
   jthread input_worker([this] () {
     input_handler();
   });
-
+  
   jthread game_worker([this] () {
     game_handler();
   });
 }
 
-// this will be used for sure.
+};  // namespace anonymous
+
 int main(int argc, char* argv[])
 {
   try {
