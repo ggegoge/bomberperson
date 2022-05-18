@@ -430,7 +430,7 @@ void RoboticClient::input_handler()
 
   for (;;) {
     cerr << "[input_handler] waiting for input\n";
-    gui_deser.readable().recv_from_sock(gui_socket, gui_endpoint);
+    gui_deser.readable().sock_fill(gui_socket, gui_endpoint);
     try {
       gui_deser >> inp;
     } catch (UnmarshallingError& e) {

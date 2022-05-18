@@ -217,7 +217,8 @@ public:
       std::vector<uint8_t> buff = r.read(sizeof(T));
       item = ntoh<T>(*(T*)(buff.data()));
     } catch (std::exception& e) {
-      throw UnmarshallingError("Failed to unmarshall an integral item!");
+      std::string err = "Failed to unmarshal a number: ";
+      throw UnmarshallingError(err + e.what());
     }
   }
   
@@ -231,7 +232,8 @@ public:
     } catch (UnmarshallingError& e) {
       throw;
     } catch (std::exception& e) {
-      throw UnmarshallingError("Failed to unmarshall a string!");
+      std::string err = "Failed to unmarshal a string: ";
+      throw UnmarshallingError(err + e.what());
     }
   }
 
