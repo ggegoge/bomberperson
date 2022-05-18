@@ -80,6 +80,44 @@ pair<string, string> get_addr(const string& addr)
   }
 }
 
+// Accessing struct fields:
+template <typename T>
+requires (same_as<T, display_messages::Lobby> || same_as<T, display_messages::Game>)
+map<PlayerId, server_messages::Player>& state_get_players(T& gl)
+{
+  if constexpr(same_as<T, display_messages::Lobby>) {
+    auto& [_1, _2, _3, _4, _5, _6, _7, players] = gl;
+    return players;
+  } else if constexpr(same_as<T, display_messages::Game>) {
+    auto& [_1, _2, _3, _4, _5, players, _7, _8, _9, _10, _11] = gl;
+    return players;
+  }
+}
+
+template <typename T>
+requires (same_as<T, display_messages::Lobby> || same_as<T, display_messages::Game>)
+const map<PlayerId, server_messages::Player>& state_get_players(const T& gl)
+{
+  if constexpr(same_as<T, display_messages::Lobby>) {
+    auto& [_1, _2, _3, _4, _5, _6, _7, players] = gl;
+    return players;
+  } else if constexpr(same_as<T, display_messages::Game>) {
+    auto& [_1, _2, _3, _4, _5, players, _7, _8, _9, _10, _11] = gl;
+    return players;
+  }
+}
+
+
+uint16_t& game_get_turn(display_messages::Game& game)
+{
+  return get<4>(game);
+}
+
+std::set<server_messages::Bomb>& game_get_bombs(display_messages::Game& game)
+{
+  return get<8>(game);
+}
+
 };
 
 class RoboticClient {
@@ -171,21 +209,27 @@ void RoboticClient::hello_handler(server_messages::Hello& h)
   cerr << "[game_handler] hello handler\n";
 
   using namespace display_messages;
-  Lobby l{h.server_name, h.players_count, h.size_x, h.size_y, h.game_length,
-    h.explosion_radius, h.bomb_timer, map<PlayerId, server_messages::Player>{}};
+  auto& [server_name, players_count, size_x, size_y,
+         game_length, explosion_radius, bomb_timer] = h;
+  cerr << "[hello_handler] hello from " << server_name << "!\n";
+  Lobby l{server_name, players_count, size_x, size_y, game_length,
+    explosion_radius, bomb_timer, map<PlayerId, server_messages::Player>{}};
 
-  game_state.timer = h.bomb_timer;
-  game_state.explosion_radius = h.explosion_radius;
+  game_state.timer = bomb_timer;
+  game_state.explosion_radius = explosion_radius;
   game_state.state = l;
-  game_state.players_count = h.players_count;
+  game_state.players_count = players_count;
 }
 
 void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
 {
   cerr << "[game_handler] ap_handler\n";
 
+  using namespace display_messages;
   visit([&ap] <typename GorL> (GorL& gl) {
-      gl.players.insert({ap.id, ap.player});
+      auto& [id, player] = ap;
+      state_get_players(gl).insert({id, player});
+      cerr << state_get_players(gl).at(id).first << "\n";
     }, game_state.state);
 }
 
@@ -195,11 +239,14 @@ void RoboticClient::lobby_to_game()
   game_state.state = visit([] <typename GorL> (GorL& gl) {
       if constexpr(same_as<Lobby, GorL>) {
         map<PlayerId, Score> scores;
-        for (auto& [plid, _] : gl.players)
+        for (auto& [plid, _] : state_get_players(gl))
           scores.insert({plid, 0});
 
-        Game g{gl.server_name, gl.size_x, gl.size_y, gl.game_length,
-          0, gl.players, {}, {}, {}, {}, scores};
+        auto& [server_name, players_count, size_x, size_y,
+               game_length, explosion_radius, timer, players] = gl;
+
+        Game g{server_name, size_x, size_y, game_length,
+          0, players, {}, {}, {}, {}, scores};
         return DisplayMessage{g};
       } else if constexpr(same_as<Game, GorL>) {
         return DisplayMessage{gl};
@@ -218,7 +265,8 @@ void RoboticClient::gs_handler(server_messages::GameStarted& gs)
   game_state.observer = true;
 
   visit([&gs] <typename GorL> (GorL& gl) {
-      gl.players = gs.players;
+      state_get_players(gl) = gs;
+      cerr << gs.at(0).first << "\n";
     }, game_state.state);
 
   lobby_to_game();
@@ -228,24 +276,28 @@ void RoboticClient::apply_event(display_messages::Game& game,
                                 map<BombId, server_messages::Bomb>& bombs,
                                 const server_messages::Event& event)
 {
-  cerr << "[game_handler] apply event\n";
+  cerr << "[game_handler] apply event:\n";
 
   using namespace server_messages;
-  visit([&game, &bombs, this] <typename Ev> (const Ev & ev) {
+  visit([&game, &bombs, this] <typename Ev> (const Ev& ev) {
+      auto& [_1, _2, _3, _4, _5, _6, player_positions, blocks, _9, _10, scores] = game;
       if constexpr(same_as<BombPlaced, Ev>) {
-        bombs.insert({ev.id, {ev.position, game_state.timer}});
+        auto& [id, position] = ev;
+        bombs.insert({id, {position, game_state.timer}});
       } else if constexpr(same_as<BombExploded, Ev>) {
-        bombs.erase(ev.id);
+        auto& [id, killed, blocks_destroyed] = ev;
+        bombs.erase(id);
 
-        for (PlayerId plid : ev.killed)
-          ++game.scores[plid];
+        for (PlayerId plid : killed)
+          ++scores[plid];
 
-        for (Position pos : ev.blocks_destroyed)
-          game.blocks.erase(pos);
+        for (Position pos : blocks_destroyed)
+          blocks.erase(pos);
       } else if constexpr(same_as<PlayerMoved, Ev>) {
-        game.player_positions[ev.id] = ev.position;
+        auto& [id, position] = ev;
+        player_positions[id] = position;
       } else if constexpr(same_as<BlockPlaced, Ev>) {
-        game.blocks.insert(ev.position);
+        blocks.insert(ev);
       } else {
         static_assert(always_false_v<Ev>, "Non-exhaustive pattern matching!");
       }
@@ -254,20 +306,24 @@ void RoboticClient::apply_event(display_messages::Game& game,
 
 void RoboticClient::turn_handler(server_messages::Turn& turn)
 {
-  cerr << "[game_handler] turn handler, turn=" << turn.turn << "\n";
+  auto& [turnno, events] = turn;
+  cerr << "[game_handler] turn handler, turn=" << turnno << "\n";
 
   lobby_to_game();
   display_messages::Game& current_game =
     get<display_messages::Game>(game_state.state);
-  current_game.turn = turn.turn;
 
-  for (const server_messages::Event& ev : turn.events) {
+  game_get_turn(current_game) = turnno;
+
+  for (const server_messages::Event& ev : events) {
     apply_event(current_game, game_state.bombs, ev);
   }
 
   // upon each turn the bombs get their timers reduced.
-  for (auto& [_, bomb] : game_state.bombs)
-    --bomb.timer;
+  for (auto& [_, bomb] : game_state.bombs) {
+    auto& [_b, timer] = bomb;
+    --timer;
+  }
 }
 
 // TODO: what to do with the scores? we go into lobby state do we not
@@ -283,7 +339,7 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
   const map<PlayerId, server_messages::Player>& players =
     visit([] <typename GorL> (const GorL& gl) {
       if constexpr(same_as<Lobby, GorL> || same_as<Game, GorL>) {
-        return gl.players;
+        return state_get_players(gl);
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
       }
@@ -291,8 +347,8 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
 
   cout << "GAME ENDED!!!\n";
 
-  for (auto [id, score] : ge.scores) {
-    cout << id << " " << players.at(id).name << "@" << players.at(id).address
+  for (auto [id, score] : ge) {
+    cout << id << " " << players.at(id).first << "@" << players.at(id).second
          << " got killed " << score << " times!\n";
   }
 
@@ -300,8 +356,11 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
       if constexpr(same_as<Lobby, GorL>) {
         return DisplayMessage{gl};
       } else if constexpr(same_as<Game, GorL>) {
-        Lobby l{gl.server_name, game_state.players_count, gl.size_x,
-          gl.size_y, gl.game_length, game_state.explosion_radius, game_state.timer, {}};
+        auto& [server_name, size_x, size_y, game_length,
+               _5, _6, _7, _8, _9, _10, _11] = gl;
+
+        Lobby l{server_name, game_state.players_count, size_x,
+          size_y, game_length, game_state.explosion_radius, game_state.timer, {}};
         return DisplayMessage{l};
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
@@ -318,11 +377,11 @@ void RoboticClient::fill_bombs()
         // No bombs in the lobby.
         return;
       } else if constexpr(same_as<Game, GorL>) {
-        gl.bombs = {};
+        game_get_bombs(gl) = {};
 
         for (auto& [_, bomb] : game_state.bombs) {
           // todo: insertion does not do anything if an object is already in
-          gl.bombs.insert(bomb);
+          game_get_bombs(gl).insert(bomb);
         }
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");

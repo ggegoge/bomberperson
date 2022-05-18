@@ -160,7 +160,7 @@ public:
   template <typename ... Ts>
   void ser(const std::tuple<Ts...>& tuple)
   {
-    std::apply([this] (auto... v) { ( *this << ... << v); }, tuple);
+    std::apply([this] (const auto&... v) { ( *this << ... << v); }, tuple);
   }
 
   template <typename T>
@@ -249,7 +249,13 @@ public:
   {
     *this >> pair.first >> pair.second;
   }
-  
+
+  template <typename ... Ts>
+  void deser(std::tuple<Ts...>& tuple)
+  {
+    std::apply([this] (auto&... v) { ( *this >> ... >> v); }, tuple);
+  }
+
   template <typename T>
   Deserialiser& operator>>(T& item)
   {
