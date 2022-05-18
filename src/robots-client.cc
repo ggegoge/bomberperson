@@ -118,6 +118,11 @@ std::set<server_messages::Bomb>& game_get_bombs(display_messages::Game& game)
   return get<8>(game);
 }
 
+std::set<Position>& game_get_explosions(display_messages::Game& game)
+{
+  return get<9>(game);
+}
+
 };
 
 class RoboticClient {
@@ -276,16 +281,17 @@ void RoboticClient::apply_event(display_messages::Game& game,
                                 map<BombId, server_messages::Bomb>& bombs,
                                 const server_messages::Event& event)
 {
-  cerr << "[game_handler] apply event:\n";
+  cerr << "[game_handler] apply event\n";
 
   using namespace server_messages;
   visit([&game, &bombs, this] <typename Ev> (const Ev& ev) {
-      auto& [_1, _2, _3, _4, _5, _6, player_positions, blocks, _9, _10, scores] = game;
+      auto& [_1, _2, _3, _4, _5, _6, player_positions, blocks, _9, explosions, scores] = game;
       if constexpr(same_as<BombPlaced, Ev>) {
         auto& [id, position] = ev;
         bombs.insert({id, {position, game_state.timer}});
       } else if constexpr(same_as<BombExploded, Ev>) {
         auto& [id, killed, blocks_destroyed] = ev;
+        explosions.insert(bombs.at(id).first);
         bombs.erase(id);
 
         for (PlayerId plid : killed)
@@ -314,6 +320,7 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
     get<display_messages::Game>(game_state.state);
 
   game_get_turn(current_game) = turnno;
+  game_get_explosions(current_game) = {};
 
   for (const server_messages::Event& ev : events) {
     apply_event(current_game, game_state.bombs, ev);
