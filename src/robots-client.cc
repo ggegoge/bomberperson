@@ -44,9 +44,9 @@ namespace {
 class ClientError : public std::runtime_error {
 public:
   ClientError()
-    : std::runtime_error("Client error!") {}
+    : runtime_error("Client error!") {}
 
-  ClientError(const std::string& msg) : std::runtime_error(msg) {}
+  ClientError(const string& msg) : runtime_error(msg) {}
 };
 
 // Helper for visiting mimicking pattern matching, inspired by cppref.
@@ -55,6 +55,8 @@ template<typename> inline constexpr bool always_false_v = false;
 struct GameState {
   DisplayMessage state;
   map<BombId, server_messages::Bomb> bombs;
+  // set since "you only die once"
+  set<PlayerId> killed_this_turn;
   // this bool will tell us whether to ignore the gui input or not.
   bool observer = false;
   bool lobby = true;
@@ -111,12 +113,17 @@ uint16_t& game_get_turn(display_messages::Game& game)
   return get<4>(game);
 }
 
-std::set<server_messages::Bomb>& game_get_bombs(display_messages::Game& game)
+set<server_messages::Bomb>& game_get_bombs(display_messages::Game& game)
 {
   return get<8>(game);
 }
 
-std::set<Position>& game_get_explosions(display_messages::Game& game)
+map<PlayerId, Score>& game_get_scores(display_messages::Game& game)
+{
+  return get<10>(game);
+}
+
+set<Position>& game_get_explosions(display_messages::Game& game)
 {
   return get<9>(game);
 }
@@ -181,8 +188,9 @@ private:
   // Game'ise the lobby, changes the held game state appropriately.
   void lobby_to_game();
 
-  // Fill bombs in current game_state.state based on game_state.bombs.
-  void fill_bombs();
+  // Fill bombs in current game_state.state based on game_state.bombs and update
+  // scores of players from the killed set.
+  void update_game();
 
   // Events affect the game in one way or another.
   void apply_event(display_messages::Game& game,
@@ -274,8 +282,7 @@ void RoboticClient::apply_event(display_messages::Game& game,
 {
   using namespace server_messages;
   visit([&game, &bombs, this] <typename Ev> (const Ev& ev) {
-      auto& [_1, _2, _3, _4, _5, _6,
-             player_positions, blocks, _9, explosions, scores] = game;
+      auto& [_1, _2, _3, _4, _5, _6, player_positions, blocks, _9, explosions, _11] = game;
 
       if constexpr(same_as<BombPlaced, Ev>) {
         auto& [id, position] = ev;
@@ -286,7 +293,7 @@ void RoboticClient::apply_event(display_messages::Game& game,
         bombs.erase(id);
 
         for (PlayerId plid : killed)
-          ++scores[plid];
+          game_state.killed_this_turn.insert(plid);
 
         for (Position pos : blocks_destroyed)
           blocks.erase(pos);
@@ -364,7 +371,7 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
     }, game_state.state);
 }
 
-void RoboticClient::fill_bombs()
+void RoboticClient::update_game()
 {
   using namespace display_messages;
 
@@ -377,6 +384,9 @@ void RoboticClient::fill_bombs()
 
         for (auto& [_, bomb] : game_state.bombs)
           game_get_bombs(gl).insert(bomb);
+
+        for (PlayerId plid : game_state.killed_this_turn)
+          ++game_get_scores(gl)[plid];
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
       }
@@ -425,10 +435,12 @@ void RoboticClient::input_handler()
   for (;;) {
     cerr << "[input_handler] waiting for input\n";
     gui_deser.readable().sock_fill(gui_socket, gui_endpoint);
+
     try {
       gui_deser >> inp;
+      gui_deser.no_trailing_bytes();
     } catch (UnmarshallingError& e) {
-      cerr << "[input_handler] ignoring invalid input from gui.\n";
+      cerr << "[input_handler] invalid input (ignored): " << e.what() << "\n";
       continue;
     }
 
@@ -458,7 +470,7 @@ void RoboticClient::game_handler()
     cerr << "[game_handler] message read, proceeding to handle it!\n";
     server_msg_handler(updt);
 
-    fill_bombs();
+    update_game();
     gui_ser << game_state.state;
     cerr << "[game_handler] sending " << gui_ser.size() << " bytes to gui\n";
     gui_socket.send_to(boost::asio::buffer(gui_ser.drain_bytes()), gui_endpoint);
@@ -528,7 +540,7 @@ int main(int argc, char* argv[])
     return 1;
   } catch (ClientError& e) {
     cerr << "Client error: " << e.what() << "\n";
-  } catch (std::exception& e) {
+  } catch (exception& e) {
     cerr << "Other exception: " << e.what() << "\n";
     return 1;
   }

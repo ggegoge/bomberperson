@@ -36,11 +36,13 @@
 
 // This concept describes a class from which the deserialiser will read bytes.
 // It should be possible to extract a chosen number of those depending on what
-// do you want to read.
+// do you want to read and it should tell you how many bytes are there to be
+// read at any given time.
 template <typename T>
 concept Readable = requires (T x, size_t nbytes)
 {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
+  {x.avalaible()} -> std::same_as<size_t>;
 };
 
 // This concepts ensures that type Seq represents an iterable sized container.
@@ -203,6 +205,18 @@ public:
     return r;
   }
 
+  size_t avalaible() const
+  {
+    return r.avalaible();
+  }
+
+  // Data not ending can be sometimes considered an unmarshalling error.
+  void no_trailing_bytes() const
+  {
+    if (avalaible())
+      throw UnmarshallingError("Trailing bytes!");
+  }
+
   // Note: we do not offer a function for deserialising enums as it is quite
   // dangerous considering there is no range check done on them upon conversion.
   template <std::integral T>
@@ -312,7 +326,7 @@ private:
   Var variant_from_index(std::size_t index)
   {
 	if constexpr(I >= std::variant_size_v<Var>) {
-      throw std::runtime_error{"Wrong variant!"};
+      throw UnmarshallingError{"Index does not match the variant!"};
 	} else {
       // this changes runtime index into a compile time index, brilliant
       return index == 0

@@ -26,6 +26,7 @@ public:
                  boost::asio::ip::udp::endpoint& endp);
 
   std::vector<uint8_t> read(size_t nbytes);
+  size_t avalaible() const;
 };
 
 class ReaderTCP {
@@ -34,6 +35,7 @@ public:
   ReaderTCP(boost::asio::ip::tcp::socket& sock) : sock(sock) {}
 
   std::vector<uint8_t> read(size_t nbytes);
+  size_t avalaible() const;
 };
 
 #endif  // _READERS_H_

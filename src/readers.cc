@@ -22,6 +22,11 @@ std::vector<uint8_t> ReaderUDP::read(size_t nbytes)
   return bytes;
 }
 
+size_t ReaderUDP::avalaible() const
+{
+  return buff_size - pos;
+}
+
 void ReaderUDP::sock_fill(udp::socket& sock, udp::endpoint& endp)
 {
   buff_size = sock.receive_from(boost::asio::buffer(buff), endp);
@@ -33,4 +38,9 @@ std::vector<uint8_t> ReaderTCP::read(size_t nbytes)
   std::vector<uint8_t> bytes(nbytes);
   boost::asio::read(sock, boost::asio::buffer(bytes, nbytes));
   return bytes;
+}
+
+size_t ReaderTCP::avalaible() const
+{
+  return sock.available();
 }
