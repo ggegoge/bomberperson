@@ -175,6 +175,7 @@ void RoboticClient::hello_handler(server_messages::Hello& h)
     h.explosion_radius, h.bomb_timer, map<PlayerId, server_messages::Player>{}};
 
   game_state.timer = h.bomb_timer;
+  game_state.explosion_radius = h.explosion_radius;
   game_state.state = l;
   game_state.players_count = h.players_count;
 }

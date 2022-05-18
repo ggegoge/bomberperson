@@ -14,6 +14,9 @@ all: robots-client
 robots-client: $(CLIENT_OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
+robots-client-static: $(CLIENT_OBJS)
+	$(CXX) $^ -o $@ -Wl,-Bstatic -lboost_program_options -Wl,-Bdynamic -lpthread
+
 src/robots-client.o: src/robots-client.cc src/marshal.h src/readers.h src/messages.h
 
 src/messages.o: src/messages.cc src/messages.h src/marshal.h
