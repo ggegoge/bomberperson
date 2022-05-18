@@ -501,6 +501,8 @@ int main(int argc, char* argv[])
     po::store(po::command_line_parser(argc, argv).
               options(desc).run(), vm);
 
+    cout << "\t\tBOMBERPERSON\n\n";
+
     if (vm.count("help")) {
       cout << "Usage: " << argv[0] <<  " [flags]\n";
       cout << desc;
