@@ -1,7 +1,6 @@
 // Implementation of a client for the robots game.
 
 #include <boost/asio/buffer.hpp>
-#include <boost/asio/connect.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/resolver_base.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -65,10 +64,9 @@ struct GameState {
   uint16_t explosion_radius;
 };
 
-// todo: address of form ::1:40007 is parsed but [::1]:40007 should be too!
 pair<string, string> get_addr(const string& addr)
 {
-  static regex r("^(.*):(\\d+)$");
+  static const regex r("^(.*):(\\d+)$");
   smatch sm;
 
   if (regex_search(addr, sm, r)) {
@@ -175,8 +173,8 @@ private:
   // the gui and send it forward to the server.
   void input_handler();
 
-  // This function reads messages from the server and updates the game state by
-  // aggregating all of the information coming from the server. Then after each
+  // Another thread reads messages from the server and updates the game state by
+  // aggregating all of the information received from the server. Then after each
   // such update it should tell the gui to show what is going on appropriately.
   void game_handler();
 
@@ -186,15 +184,15 @@ private:
   // Fill bombs in current game_state.state based on game_state.bombs.
   void fill_bombs();
 
-  // Events affect the game.
+  // Events affect the game in one way or another.
   void apply_event(display_messages::Game& game,
                    map<BombId, server_messages::Bomb>& bombs,
                    const server_messages::Event& event);
 
-  // Variant to variant conversion, handles input messages.
+  // Variant to variant conversion (type safety), handles input messages.
   ClientMessage input_to_client(InputMessage& msg);
   
-  // Handling of messages from the server.
+  // Handliing of messages from the server and case specific handlers.
   void server_msg_handler(ServerMessage& msg);
 
   void hello_handler(server_messages::Hello& hello);
@@ -223,8 +221,6 @@ void RoboticClient::hello_handler(server_messages::Hello& h)
 
 void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
 {
-  cerr << "[game_handler] ap_handler\n";
-
   using namespace display_messages;
   visit([&ap] <typename GorL> (GorL& gl) {
       auto& [id, player] = ap;
@@ -322,10 +318,8 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
   }
 
   // upon each turn the bombs get their timers reduced.
-  for (auto& [_, bomb] : game_state.bombs) {
-    auto& [_b, timer] = bomb;
-    --timer;
-  }
+  for (auto& [_, bomb] : game_state.bombs)
+    --bomb.second;
 }
 
 void RoboticClient::ge_handler(server_messages::GameEnded& ge)
@@ -413,9 +407,9 @@ void RoboticClient::server_msg_handler(ServerMessage& msg)
 ClientMessage RoboticClient::input_to_client(InputMessage& msg)
 {
   using namespace client_messages;
-  return visit([] <typename T> (T& x) {
+  return visit([] <typename T> (T& x) -> ClientMessage {
       if constexpr(same_as<T, PlaceBomb> || same_as<T, PlaceBlock> || same_as<T, Move>)
-        return ClientMessage{x};
+        return x;
       else
         static_assert(always_false_v<T>, "Non-exhaustive pattern matching!");
     }, msg);
@@ -441,8 +435,7 @@ void RoboticClient::input_handler()
     if (game_state.lobby) {
       cerr << "[input_handler] first input in the lobby --> trying to join\n";
       game_state.lobby = false;
-      Join j(name);
-      msg = j;
+      msg = Join{name};
     } else {
       msg = input_to_client(inp);
     }
@@ -477,7 +470,7 @@ void RoboticClient::play()
   jthread input_worker([this] () {
     input_handler();
   });
-  
+
   jthread game_worker([this] () {
     game_handler();
   });

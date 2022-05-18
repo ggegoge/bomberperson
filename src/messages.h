@@ -5,6 +5,8 @@
 // extra adapters whereas if structs were to be used then it would be necessary
 // to write another overloads for each one of them.
 
+// Messages are in respective namespaces to avoid overt confusion with naming.
+
 #ifndef _MESSAGES_H_
 #define _MESSAGES_H_
 

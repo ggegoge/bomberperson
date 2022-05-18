@@ -94,11 +94,6 @@ public:
 class Serialiser {
   std::vector<uint8_t> out;
 public:
-  void clean()
-  {
-    out = {};
-  }
-
   size_t size() const
   {
     return out.size();
@@ -114,7 +109,7 @@ public:
     return out;
   }
 
-  // This combines the action of clean() and to_bytes() as it is often useful.
+  // Get current output and clean it.
   std::vector<uint8_t> drain_bytes()
   {
     std::vector<uint8_t> empty;
@@ -150,6 +145,7 @@ public:
       out.push_back(static_cast<uint8_t>(c));
   }
 
+  // Marshalling of sets, vectors, maps etc.
   template <Iterable Seq>
   void ser(const Seq& seq)
   {
@@ -160,7 +156,7 @@ public:
       *this << item;
   }
 
-  // Note: thank's to this function map is also serialisable due to being and
+  // Note: thanks to this function std::map is also serialisable due to being an
   // iterable of key-value pairs.
   template <typename T1, typename T2>
   void ser(const std::pair<T1, T2>& pair)
@@ -174,8 +170,6 @@ public:
     std::apply([this] (const auto&... v) { ( *this << ... << v); }, tuple);
   }
 
-  // Note: this is the only type we do not have a generic deserialiser for as
-  // there is no easy way to contruct a variant from index.
   template <typename... Ts>
   void ser(const std::variant<Ts...>& var)
   {
@@ -186,6 +180,7 @@ public:
       }, var);
   }
 
+  // The serialisation operator proper.
   template <typename T>
   Serialiser& operator<<(const T& item)
   {
@@ -289,6 +284,8 @@ public:
     std::apply([this] (auto&... v) { ( *this >> ... >> v); }, tuple);
   }
 
+  // The trickiest. First create a default variant based on the index and then
+  // fill the stored value.
   template <typename... Ts>
   void deser(std::variant<Ts...>& var)
   {
@@ -317,9 +314,10 @@ private:
 	if constexpr(I >= std::variant_size_v<Var>) {
       throw std::runtime_error{"Wrong variant!"};
 	} else {
-		return index == 0
-          ? Var{std::in_place_index<I>}
-          : variant_from_index<Var, I + 1>(index - 1);
+      // this changes runtime index into a compile time index, brilliant
+      return index == 0
+        ? Var{std::in_place_index<I>}
+        : variant_from_index<Var, I + 1>(index - 1);
     }
   }
 };
