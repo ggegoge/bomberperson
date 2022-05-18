@@ -242,6 +242,8 @@ void RoboticClient::apply_event(display_messages::Game& game,
 
         for (Position pos : ev.blocks_destroyed)
           game.blocks.erase(pos);
+
+        game.explosions.insert(bombs.at(ev.id).position);
       } else if constexpr(same_as<PlayerMoved, Ev>) {
         game.player_positions[ev.id] = ev.position;
       } else if constexpr(same_as<BlockPlaced, Ev>) {
@@ -260,6 +262,7 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
   display_messages::Game& current_game =
     get<display_messages::Game>(game_state.state);
   current_game.turn = turn.turn;
+  current_game.explosions = {};
 
   for (const server_messages::Event& ev : turn.events) {
     apply_event(current_game, game_state.bombs, ev);
