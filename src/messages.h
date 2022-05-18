@@ -25,13 +25,6 @@ using BombId = uint32_t;
 using Position = std::pair<uint16_t, uint16_t>;
 using Score = uint32_t;
 
-class DeserProtocolError : public std::runtime_error {
-public:
-  DeserProtocolError()
-    : std::runtime_error("Error in deserialisaion according to robots protocol") {}
-  DeserProtocolError(const std::string& msg) : std::runtime_error(msg) {}
-};
-
 namespace client_messages
 {
 

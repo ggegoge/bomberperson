@@ -22,6 +22,8 @@
 // htonl and htons
 #include <arpa/inet.h>
 
+#include <exception>
+#include <stdexcept>
 #include <concepts>
 #include <vector>
 #include <tuple>
@@ -54,7 +56,7 @@ concept Iterable = requires (Seq seq)
 // and that should be fine?
 // Changing the byte order. Numbers are serialised in the network order.
 template <typename T>
-constexpr T hton(T num)
+inline constexpr T hton(T num)
 {
   if constexpr (std::same_as<T, uint64_t>)
     return be64toh(num);
@@ -67,7 +69,7 @@ constexpr T hton(T num)
 }
 
 template <typename T>
-constexpr T ntoh(T num)
+inline constexpr T ntoh(T num)
 {
   if constexpr (std::is_same_v<T, uint64_t>)
     return htobe64(num);
@@ -78,6 +80,13 @@ constexpr T ntoh(T num)
   else
     return num;
 }
+
+class UnmarshallingError : public std::runtime_error {
+public:
+  UnmarshallingError()
+    : std::runtime_error("Error in deserialisaion according to robots protocol") {}
+  UnmarshallingError(const std::string& msg) : std::runtime_error(msg) {}
+};
 
 // Class for data serialisation.
 class Serialiser {
@@ -190,19 +199,28 @@ public:
   template <std::integral T>
   void deser(T& item) requires (!std::is_enum_v<T>)
   {
-    std::vector<uint8_t> buff = r.read(sizeof(T));
-    item = ntoh<T>(*(T*)(buff.data()));
+    try {
+      std::vector<uint8_t> buff = r.read(sizeof(T));
+      item = ntoh<T>(*(T*)(buff.data()));
+    } catch (std::exception& e) {
+      std::string err = "Failed to unmarshal a number: ";
+      throw UnmarshallingError(err + e.what());
+    }
   }
   
   void deser(std::string& str)
   {
-    uint8_t len;
-    deser(len);
-    std::vector<uint8_t> bytes = r.read(len);
-    str.assign(reinterpret_cast<char*>(bytes.data()), len);
+    try {
+      uint8_t len;
+      deser(len);
+      std::vector<uint8_t> bytes = r.read(len);
+      str.assign(reinterpret_cast<char*>(bytes.data()), len);
+    } catch (std::exception& e) {
+      std::string err = "Failed to unmarshal a string: ";
+      throw UnmarshallingError(err + e.what());
+    }
   }
 
-  // todo: template for iterable like above?
   template <typename T>
   void deser(std::vector<T>& seq)
   {

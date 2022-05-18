@@ -378,10 +378,14 @@ void RoboticClient::input_handler()
 
   for (;;) {
     cerr << "[input_handler] waiting for input\n";
-    // todo: add methods for recv and send etc that wrap around that?
-    gui_deser.readable().recv_from_sock(gui_socket);
+    try {
+      gui_deser.readable().recv_from_sock(gui_socket, gui);
+      gui_deser >> inp;
+    } catch (UnmarshallingError& e) {
+      cerr << "[input handler] ignoring invalid input from gui\n";
+      continue;
+    }
     // todo: ignore invalid messages!
-    gui_deser >> inp;
 
     if (game_state.lobby) {
       cerr << "[input_handler] first input in the lobby --> trying to join\n";
@@ -406,7 +410,6 @@ void RoboticClient::game_handler()
 
   for (;;) {
     cerr << "[game_handler] tying to read a message from server\n";
-    // todo: disconnect upon receiving a bad message. Should try to reconnect?
     server_deser >> updt;
     cerr << "[game_handler] message read, proceeding to handle it!\n";
     server_msg_handler(updt);
@@ -421,13 +424,18 @@ void RoboticClient::game_handler()
 // we play while we can innit
 void RoboticClient::play()
 {
-  jthread input_worker([this] () {
-    input_handler();
-  });
+  try {
+    jthread input_worker([this] () {
+      input_handler();
+    });
 
-  jthread game_worker([this] () {
-    game_handler();
-  });
+    jthread game_worker([this] () {
+      game_handler();
+    });
+  } catch (exception& e) {
+    string err = "Client failed with an exception: ";
+    throw ClientError(err + e.what());
+  }
 }
 
 // this will be used for sure.

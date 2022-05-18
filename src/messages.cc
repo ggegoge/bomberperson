@@ -182,7 +182,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
     return deser;
 
   default:
-    throw DeserProtocolError("Invalid direction!");
+    throw UnmarshallingError("Invalid direction!");
   }
 }
 
@@ -306,7 +306,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, Event& ev)
     return deser;
   }
   default: {
-    throw DeserProtocolError("Wrong event type!");
+    throw UnmarshallingError("Wrong event type!");
   }
   }
 
@@ -345,7 +345,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, client_messages::ClientMessa
     return deser;
   }
   default:
-    throw DeserProtocolError("Wrong type of client message!");
+    throw UnmarshallingError("Wrong type of client message!");
   }
 }
 
@@ -389,7 +389,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, server_messages::ServerMessa
     return deser;
   }
   default: {
-    throw DeserProtocolError("wrong server message type!");
+    throw UnmarshallingError("wrong server message type!");
   }
   };
 
@@ -420,7 +420,7 @@ Deserialiser<R>& operator>>(Deserialiser<R>& deser, input_messages::InputMessage
     return deser;
   }
   default:
-    throw DeserProtocolError("Wrong client message type!");
+    throw UnmarshallingError("Wrong client message type!");
   };
 }
 
