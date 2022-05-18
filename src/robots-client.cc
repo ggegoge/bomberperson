@@ -235,6 +235,7 @@ void RoboticClient::apply_event(display_messages::Game& game,
       if constexpr(same_as<BombPlaced, Ev>) {
         bombs.insert({ev.id, {ev.position, game_state.timer}});
       } else if constexpr(same_as<BombExploded, Ev>) {
+        game.explosions.insert(bombs.at(ev.id).position);
         bombs.erase(ev.id);
 
         for (PlayerId plid : ev.killed)
@@ -242,8 +243,6 @@ void RoboticClient::apply_event(display_messages::Game& game,
 
         for (Position pos : ev.blocks_destroyed)
           game.blocks.erase(pos);
-
-        game.explosions.insert(bombs.at(ev.id).position);
       } else if constexpr(same_as<PlayerMoved, Ev>) {
         game.player_positions[ev.id] = ev.position;
       } else if constexpr(same_as<BlockPlaced, Ev>) {
