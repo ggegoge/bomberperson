@@ -42,7 +42,6 @@ using client_messages::ClientMessage;
 
 namespace {
 
-// todo: add trying and catching of that wherever it is advisable!
 class ClientError : public std::runtime_error {
 public:
   ClientError()
@@ -87,7 +86,7 @@ pair<string, string> get_addr(const string& addr)
   }
 }
 
-// Accessing struct fields:
+// Accessing fields of DisplayMessage tuples.
 template <typename T>
 requires (same_as<T, display_messages::Lobby> || same_as<T, display_messages::Game>)
 map<PlayerId, server_messages::Player>& state_get_players(T& gl)
@@ -124,13 +123,14 @@ std::set<Position>& game_get_explosions(display_messages::Game& game)
   return get<9>(game);
 }
 
+// Main class representing the client.
 class RoboticClient {
   boost::asio::io_context io_ctx;
   string name;
   tcp::socket server_socket;
   udp::socket gui_socket;
-  udp::endpoint gui;
-  tcp::endpoint server;
+  udp::endpoint gui_endpoint;
+  tcp::endpoint server_endpoint;
   Serialiser server_ser;
   Serialiser gui_ser;
   Deserialiser<ReaderTCP> server_deser;
@@ -140,34 +140,31 @@ public:
   RoboticClient(const string& name, uint16_t port,
                 const string& server_addr, const string& gui_addr)
     : name(name), server_socket(io_ctx), gui_socket(io_ctx, udp::endpoint(udp::v6(), port)),
-      gui(), server(), server_deser(server_socket), gui_deser({})
+      gui_endpoint(), server_endpoint(), server_deser(server_socket), gui_deser({})
   {
     auto [gui_ip, gui_port] = get_addr(gui_addr);
     udp::resolver udp_resolver(io_ctx);
-    gui = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
+    gui_endpoint = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
 
-    if (gui.protocol() == udp::v6())
-      cerr << "GUI: [" << gui.address() << "]:" << gui.port() << "\n";
+    cerr << "Resolved adresses:\n";
+    if (gui_endpoint.protocol() == udp::v6())
+      cerr << "\tgui: [" << gui_endpoint.address() << "]:" << gui_endpoint.port() << "\n";
     else
-      cerr << "GUI: " << gui.address() << ":" << gui.port() << "\n";
+      cerr << "\tgui: " << gui_endpoint.address() << ":" << gui_endpoint.port() << "\n";
 
     auto [serv_ip, serv_port] = get_addr(server_addr);
     tcp::resolver tcp_resolver(io_ctx);
-    server = *tcp_resolver.resolve(serv_ip, serv_port, resolver_base::numeric_service);
+    server_endpoint = *tcp_resolver.resolve(serv_ip, serv_port, resolver_base::numeric_service);
 
-    if (server.protocol() == tcp::v6())
-      cerr << "SERVER: [" << server.address() << "]:" << server.port() << "\n";
+    if (server_endpoint.protocol() == tcp::v6())
+      cerr << "\tserver: [" << server_endpoint.address() << "]:" << server_endpoint.port() << "\n";
     else
-      cerr << "SERVER: " << server.address() << ":" << server.port() << "\n";
+      cerr << "\tserver: " << server_endpoint.address() << ":" << server_endpoint.port() << "\n";
 
     // open connection to the server
-    server_socket.connect(server);
+    server_socket.connect(server_endpoint);
     tcp::no_delay option(true);
     server_socket.set_option(option);
-
-    // todo: gui needs to be turned on beforehand! should I really connect?
-    // and to the gui...? Perhaps I should stick to send_to and receive_from?
-    gui_socket.connect(gui);
   }
 
   // Main function for actually playing the game.
@@ -207,7 +204,6 @@ private:
   void ge_handler(server_messages::GameEnded& ge);
 };
 
-// todo: receiving some messages like AccP or Hello _during the game_ is UB...
 void RoboticClient::hello_handler(server_messages::Hello& h)
 {
   cerr << "[game_handler] hello handler\n";
@@ -434,8 +430,7 @@ void RoboticClient::input_handler()
 
   for (;;) {
     cerr << "[input_handler] waiting for input\n";
-    // todo: add methods for recv and send etc that wrap around that?
-    gui_deser.readable().recv_from_sock(gui_socket);
+    gui_deser.readable().recv_from_sock(gui_socket, gui_endpoint);
     try {
       gui_deser >> inp;
     } catch (UnmarshallingError& e) {
@@ -473,7 +468,7 @@ void RoboticClient::game_handler()
     fill_bombs();
     gui_ser << game_state.state;
     cerr << "[game_handler] sending " << gui_ser.size() << " bytes to gui\n";
-    gui_socket.send(boost::asio::buffer(gui_ser.drain_bytes()));
+    gui_socket.send_to(boost::asio::buffer(gui_ser.drain_bytes()), gui_endpoint);
   }
 }
 
@@ -523,11 +518,11 @@ int main(int argc, char* argv[])
     po::notify(vm);
 
     cout << "Selected options:\n"
-         << "\tgui-address=" << gui_addr << "\n"
-         << "\tplayer-name=" << player_name << "\n"
-         << "\tserver-address=" << server_addr << "\n"
-         << "\tport=" << portnum << "\n"
-         << "Running the client with those.\n";
+         << "\tgui-address: " << gui_addr << "\n"
+         << "\tplayer-name: " << player_name << "\n"
+         << "\tserver-address: " << server_addr << "\n"
+         << "\tport: " << portnum << "\n"
+         << "Running the client with these.\n\n";
 
     RoboticClient client(player_name, portnum, server_addr, gui_addr);
     client.play();

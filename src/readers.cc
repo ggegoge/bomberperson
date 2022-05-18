@@ -22,19 +22,7 @@ std::vector<uint8_t> ReaderUDP::read(size_t nbytes)
   return bytes;
 }
 
-bool ReaderUDP::eof() const
-{
-  return pos == buff_size;
-}
-
-// assuming the socket has been connected to proper endpoint
-void ReaderUDP::recv_from_sock(udp::socket& sock)
-{
-  buff_size = sock.receive(boost::asio::buffer(buff));
-  pos = 0;
-}
-
-void ReaderUDP::recv_from_sock(udp::socket& sock, udp::endpoint& endp)
+void ReaderUDP::sock_fill(udp::socket& sock, udp::endpoint& endp)
 {
   buff_size = sock.receive_from(boost::asio::buffer(buff), endp);
   pos = 0;

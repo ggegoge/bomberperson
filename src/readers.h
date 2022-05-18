@@ -21,12 +21,9 @@ class ReaderUDP {
 public:
   ReaderUDP() {}
 
-  bool eof() const;
-  
-  void recv_from_sock(boost::asio::ip::udp::socket& sock);
-
-  void recv_from_sock(boost::asio::ip::udp::socket& sock,
-                      boost::asio::ip::udp::endpoint& endp);
+  // Fill the reader with a udp socket.
+  void sock_fill(boost::asio::ip::udp::socket& sock,
+                 boost::asio::ip::udp::endpoint& endp);
 
   std::vector<uint8_t> read(size_t nbytes);
 };
