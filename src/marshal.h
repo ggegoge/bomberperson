@@ -88,8 +88,8 @@ inline constexpr T ntoh(T num)
 class UnmarshallingError : public std::runtime_error {
 public:
   UnmarshallingError()
-    : std::runtime_error("Error in unmarshalling!") {}
-  UnmarshallingError(const std::string& msg) : std::runtime_error(msg) {}
+    : std::runtime_error{"Error in unmarshalling!"} {}
+  UnmarshallingError(const std::string& msg) : std::runtime_error{msg} {}
 };
 
 // Class for data serialisation.
@@ -196,8 +196,8 @@ class Deserialiser {
   R r;
 
 public:
-  Deserialiser(const R& r) : r(r) {}
-  Deserialiser(R&& r) : r(std::move(r)) {}
+  Deserialiser(const R& r) : r{r} {}
+  Deserialiser(R&& r) : r{std::move(r)} {}
 
   // This allows for changing and accessing the underlying readable.
   R& readable()
@@ -214,7 +214,7 @@ public:
   void no_trailing_bytes() const
   {
     if (avalaible())
-      throw UnmarshallingError("Trailing bytes!");
+      throw UnmarshallingError{"Trailing bytes!"};
   }
 
   // Note: we do not offer a function for deserialising enums as it is quite
@@ -227,7 +227,7 @@ public:
       item = ntoh<T>(*(T*)(buff.data()));
     } catch (std::exception& e) {
       std::string err = "Failed to unmarshal a number: ";
-      throw UnmarshallingError(err + e.what());
+      throw UnmarshallingError{err + e.what()};
     }
   }
   
@@ -242,7 +242,7 @@ public:
       throw;
     } catch (std::exception& e) {
       std::string err = "Failed to unmarshal a string: ";
-      throw UnmarshallingError(err + e.what());
+      throw UnmarshallingError{err + e.what()};
     }
   }
 

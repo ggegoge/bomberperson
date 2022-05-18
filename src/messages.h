@@ -51,7 +51,7 @@ inline Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
     return deser;
 
   default:
-    throw UnmarshallingError("Invalid direction!");
+    throw UnmarshallingError{"Invalid direction!"};
   }
 }
 

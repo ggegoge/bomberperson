@@ -1,5 +1,7 @@
 // Implementation of a client for the robots game.
 
+// todo: logging only if NDEBUG?
+
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/resolver_base.hpp>
@@ -82,7 +84,7 @@ pair<string, string> get_addr(const string& addr)
     string port = sm[2].str();
     return {ip, port};
   } else {
-    throw ClientError("Invalid address!");
+    throw ClientError{"Invalid address!"};
   }
 }
 
@@ -144,11 +146,11 @@ class RoboticClient {
 public:
   RoboticClient(const string& name, uint16_t port,
                 const string& server_addr, const string& gui_addr)
-    : name(name), server_socket(io_ctx), gui_socket(io_ctx, udp::endpoint(udp::v6(), port)),
-      gui_endpoint(), server_endpoint(), server_deser(server_socket), gui_deser({})
+    : name{name}, server_socket{io_ctx}, gui_socket{io_ctx, udp::endpoint{udp::v6(), port}},
+      gui_endpoint{}, server_endpoint{}, server_deser{server_socket}, gui_deser{{}}
   {
     auto [gui_ip, gui_port] = get_addr(gui_addr);
-    udp::resolver udp_resolver(io_ctx);
+    udp::resolver udp_resolver{io_ctx};
     gui_endpoint = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
 
     cerr << "Resolved adresses:\n";
@@ -158,7 +160,7 @@ public:
       cerr << "\tgui: " << gui_endpoint.address() << ":" << gui_endpoint.port() << "\n";
 
     auto [serv_ip, serv_port] = get_addr(server_addr);
-    tcp::resolver tcp_resolver(io_ctx);
+    tcp::resolver tcp_resolver{io_ctx};
     server_endpoint = *tcp_resolver.resolve(serv_ip, serv_port, resolver_base::numeric_service);
 
     if (server_endpoint.protocol() == tcp::v6())
@@ -479,13 +481,8 @@ void RoboticClient::game_handler()
 
 void RoboticClient::play()
 {
-  jthread input_worker([this] () {
-    input_handler();
-  });
-
-  jthread game_worker([this] () {
-    game_handler();
-  });
+  jthread input_worker{[this] () { input_handler(); }};
+  jthread game_worker{[this] () { game_handler(); }};
 }
 
 };  // namespace anonymous
@@ -497,7 +494,7 @@ int main(int argc, char* argv[])
     string gui_addr;
     string player_name;
     string server_addr;
-    po::options_description desc("Allowed flags for the robotic client");
+    po::options_description desc{"Allowed flags for the robotic client"};
     desc.add_options()
       ("help,h", "produce this help message")
       ("gui-address,d", po::value<string>(&gui_addr)->required(),
@@ -531,7 +528,7 @@ int main(int argc, char* argv[])
          << "\tport: " << portnum << "\n"
          << "Running the client with these.\n\n";
 
-    RoboticClient client(player_name, portnum, server_addr, gui_addr);
+    RoboticClient client{player_name, portnum, server_addr, gui_addr};
     client.play();
 
   } catch (po::required_option& e) {

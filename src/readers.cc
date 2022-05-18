@@ -15,7 +15,7 @@ using boost::asio::ip::udp;
 std::vector<uint8_t> ReaderUDP::read(size_t nbytes)
 {
   if (pos + nbytes > buff_size)
-    throw std::runtime_error("Not enough bytes in the buffer!");
+    throw std::runtime_error{"Not enough bytes in the buffer!"};
 
   std::vector<uint8_t> bytes(buff + pos, buff + pos + nbytes);
   pos += nbytes;
