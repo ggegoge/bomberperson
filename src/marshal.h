@@ -22,6 +22,7 @@
 // htonl and htons
 #include <arpa/inet.h>
 
+#include <type_traits>
 #include <exception>
 #include <stdexcept>
 #include <concepts>
@@ -53,6 +54,14 @@ concept Iterable = requires (Seq seq)
   {seq.size()} -> std::integral;
   {seq.cbegin()};
   {seq.cend()};
+};
+
+// Can only unmarshal enums which have a dummy last value that helps check its size.
+template <typename T>
+concept UnmarshallableEnum = requires
+{
+  std::is_enum_v<T>;
+  T::BOLLOCKS;
 };
 
 // todo: comparing sizes instead of same_as? perhaps someone gives us an int
@@ -182,6 +191,10 @@ public:
       }, var);
   }
 
+  template <typename T>
+  requires std::is_empty_v<T>
+  void ser(const T&) { return; }
+
   // The serialisation operator proper.
   template <typename T>
   Serialiser& operator<<(const T& item)
@@ -230,7 +243,19 @@ public:
       throw UnmarshallingError{err + e.what()};
     }
   }
-  
+
+  template <UnmarshallableEnum T>
+  void deser(T& item)
+  {
+    uint8_t kind;
+    deser(kind);
+
+    if (kind >= static_cast<uint8_t>(T::BOLLOCKS))
+      throw UnmarshallingError{"Byte does not match the enum!"};
+
+    item = static_cast<T>(kind);
+  }
+
   void deser(std::string& str)
   {
     try {
@@ -311,6 +336,10 @@ public:
         *this >> x;
       }, var);
   }
+
+  template <typename T>
+  requires std::is_empty_v<T>
+  void deser(T&) { return; }
 
   template <typename T>
   Deserialiser& operator>>(T& item)

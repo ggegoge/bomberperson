@@ -31,29 +31,10 @@ using Score = uint32_t;
 namespace client_messages
 {
 
-enum Direction {
-  UP, RIGHT, DOWN, LEFT,
+// Last case so that this is an UnmarshallableEnum (see marshal.h).
+enum class Direction {
+  UP, RIGHT, DOWN, LEFT, BOLLOCKS
 };
-
-// Our marshalling module does not provide a generlised way of safe (ie range checked)
-// enum deserialsation.
-template <Readable R>
-inline Deserialiser<R>& operator>>(Deserialiser<R>& deser, Direction& d)
-{
-  uint8_t dir;
-  deser >> dir;
-  d = static_cast<Direction>(dir);
-  switch (dir) {
-  case UP:
-  case RIGHT:
-  case DOWN:
-  case LEFT:
-    return deser;
-
-  default:
-    throw UnmarshallingError{"Invalid direction!"};
-  }
-}
 
 // Join(name)
 using Join = std::string;
@@ -61,15 +42,6 @@ using Join = std::string;
 // Placeholders.
 struct PlaceBomb {};
 struct PlaceBlock {};
-
-// Adapters for (un)marshalling to work on those empty structs.
-inline Serialiser& operator<<(Serialiser& ser, const PlaceBlock&) { return ser; }
-inline Serialiser& operator<<(Serialiser& ser, const PlaceBomb&) { return ser; }
-template <Readable R>
-inline Deserialiser<R>& operator>>(Deserialiser<R>& deser, PlaceBlock&) { return deser; }
-template <Readable R>
-inline Deserialiser<R>& operator>>(Deserialiser<R>& deser, PlaceBomb&) { return deser; }
-
 
 // Move(direction)
 using Move = Direction;
