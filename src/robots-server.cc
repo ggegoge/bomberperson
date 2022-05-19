@@ -220,7 +220,10 @@ public:
       radius{radius}, initial_blocks{initial_blocks}, game_length{game_length},
       seed{seed}, size_x{size_x}, size_y{size_y}, port{port}, io_ctx{},
       endpoint(tcp::v6(), port), tcp_acceptor{io_ctx, endpoint},
-      hello{name, players_count, size_x, size_y, game_length, radius, timer}, rand{seed} {}
+      hello{name, players_count, size_x, size_y, game_length, radius, timer}, rand{seed}
+  {
+    dbg("Running the server on ", endpoint.address(), ":", endpoint.port());
+  }
 
   void run();
 
@@ -259,6 +262,10 @@ private:
   // this function does all bombing related events
   void do_bombing(server_messages::Turn& turn);
 
+  // funcs: find_neighbouring and find_in_radius(pos, direction) -> players
+  void killed_in_radius(std::set<PlayerId>& killed, Position pos,
+                        client_messages::Direction dir);
+
   // gather moves
   void gather_moves(server_messages::Turn& turn);
 
@@ -274,11 +281,16 @@ private:
 // Utility functions
 void RoboticServer::hail(tcp::socket& client)
 {
+  dbg("[acceptor] haling new client");
+  const auto& [hname, hpc, hx, hy, hgl, hr, ht] = hello;
+  dbg("[acceptor] Hello{", hname, " ", (int)hpc, " ", hx, " ", hy,
+      " ", hgl, " ", hr, " ", ht, "}");
   Serialiser ser;
   ser << ServerMessage{hello};
   send_bytes(ser.drain_bytes(), client);
 
-  if (lobby) {
+  if (!lobby) {
+    dbg("[acceptor] he laint in-he, game already on");
     server_messages::GameStarted gs;
     {
       std::lock_guard<std::mutex> lk{players_mutex};
@@ -290,6 +302,7 @@ void RoboticServer::hail(tcp::socket& client)
     ser << ServerMessage{turn0};
     send_bytes(ser.drain_bytes(), client);
   } else {
+    dbg("[acceptor] he just lobbyin");
     std::lock_guard<std::mutex> lk{players_mutex};
     for (const auto& [plid, player] : players) {
       server_messages::AcceptedPlayer ap{plid, player};
@@ -342,14 +355,28 @@ void RoboticServer::do_bombing(server_messages::Turn& turn)
       explosions.push_back(bombid);
       std::set<PlayerId> killed;
       std::set<Position> destroyed;
+
       // find those killed........ todo
+      client_messages::Direction dirs[] = {client_messages::Direction::UP,
+        client_messages::Direction::DOWN, client_messages::Direction::LEFT,
+        client_messages::Direction::RIGHT};
 
-      // W wyniku eksplozji bomby zostają zniszczone wszystkie roboty w jej
-      // zasięgu oraz jedynie najbliższe bloki w jej zasięgu. Eksplozja bomby ma
-      // kształt krzyża o długości ramienia równej parametrowi
-      // `explosion_radius`. Jeśli robot stoi na bloku, który zostanie
-      // zniszczony w wyniku eksplozji, to taki robot również jest niszczony.
+      // find those who have got their lives ended
+      for (client_messages::Direction d : dirs) {
+        killed_in_radius(killed, bomb_pos, d);
+      }
 
+      // find destroyed blocks if there are any...
+      for (client_messages::Direction d : dirs) {
+        Position neigh = do_move(bomb_pos, d);
+        if (neigh != bomb_pos) {
+          auto it = blocks.find(neigh);
+          if (it != blocks.end()) {
+            destroyed.insert(neigh);
+            blocks.erase(it);
+          }
+        }
+      }
       events.push_back(server_messages::BombExploded{bombid, killed, destroyed});
     }
   }
@@ -376,45 +403,72 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       continue;
     }
 
-    if (!killed_this_turn.contains(id)) {
-      using namespace client_messages;
-      PlayerId plid = id;
-      const ClientMessage& cmsg = maybe_cl->current_move.value();
-      std::visit([this, &turn, plid] <typename Cm> (const Cm& cm) {
-          auto& [_, events] = turn;
-          if constexpr(std::same_as<Cm, Join>) {
-            throw ServerLogicError("Join should not be placed as current move!");
-          } else if constexpr(std::same_as<Cm, PlaceBomb>) {
-            // get an id for the bomb
-            BombId bombid = get_free_id(bombs);
-            server_messages::Bomb bomb{positions.at(plid), timer};
-            bombs.insert({bombid, bomb});
-            server_messages::BombPlaced bp{bombid, bomb.first};
-            events.push_back(bp);
-          } else if constexpr(std::same_as<Cm, PlaceBlock>) {
-            Position pos = positions.at(plid);
+
+    dbg("[game_master] not killed -> handling this players moves");
+    using namespace client_messages;
+    PlayerId plid = id;
+    const ClientMessage& cmsg = maybe_cl->current_move.value();
+    std::visit([this, &turn, plid] <typename Cm> (const Cm& cm) {
+        dbg("seeing a client msg\n");
+        auto& [_, events] = turn;
+        if constexpr(std::same_as<Cm, Join>) {
+          throw ServerLogicError("Join should not be placed as current move!");
+        } else if constexpr(std::same_as<Cm, PlaceBomb>) {
+          // get an id for the bomb
+          BombId bombid = get_free_id(bombs);
+          server_messages::Bomb bomb{positions.at(plid), timer};
+          bombs.insert({bombid, bomb});
+          server_messages::BombPlaced bp{bombid, bomb.first};
+          events.push_back(bp);
+        } else if constexpr(std::same_as<Cm, PlaceBlock>) {
+          Position pos = positions.at(plid);
             blocks.insert(pos);
             events.push_back(server_messages::BlockPlaced{pos});
-          } else if constexpr(std::same_as<Cm, Move>) {
-            Position pos = positions.at(plid);
-            Position new_pos = do_move(pos, cm);
-            if (!blocks.contains(new_pos) && pos != new_pos) {
-              positions.at(plid) = new_pos;
-              server_messages::PlayerMoved pm{plid, new_pos};
-              events.push_back(pm);
-            }
-          } else {
-            static_assert(always_false_v<Cm>, "Non-exhaustive pattern matching!");
+        } else if constexpr(std::same_as<Cm, Move>) {
+          dbg("[game_master] he mooved..");
+          Position pos = positions.at(plid);
+          Position new_pos = do_move(pos, cm);
+          if (!blocks.contains(new_pos) && pos != new_pos) {
+            positions.at(plid) = new_pos;
+            server_messages::PlayerMoved pm{plid, new_pos};
+            events.push_back(pm);
           }
-        }, cmsg);
-    } else {
-      Position new_pos = {rand() % size_x, rand() % size_y};
-      positions[id] = new_pos;
-      server_messages::PlayerMoved pm{id, new_pos};
-      turn.second.push_back(pm);
+        } else {
+          static_assert(always_false_v<Cm>, "Non-exhaustive pattern matching!");
+        }
+      }, cmsg);
+
+    if (killed_this_turn.contains(id)) {
+      Position pos = {rand() % size_x, rand() % size_y};
+      positions[id] = pos;
+      turn.second.push_back(server_messages::PlayerMoved{plid, pos});
     }
+    // delete the old move
+    maybe_cl->current_move = {};
   }
 }
+
+void RoboticServer::killed_in_radius(std::set<PlayerId>& killed, Position pos,
+                                     client_messages::Direction dir)
+{
+  for (uint16_t i = 0; i < radius; ++i) {
+    Position next = do_move(pos, dir);
+
+    if (next == pos || blocks.contains(next))
+      return;
+
+    // now check if there are players on pos but how the hell would i do that?
+    // piss and shit
+    for (const auto& [id, pl_pos] : positions)
+      if (pl_pos == next) {
+        killed.insert(id);
+        killed_this_turn.insert(id);
+      }
+
+    pos = next;
+  }
+}
+
 
 Position RoboticServer::do_move(Position pos,
                                 client_messages::Direction dir) const
@@ -443,8 +497,8 @@ Position RoboticServer::do_move(Position pos,
 // todo: make the zeroth turn
 server_messages::Turn RoboticServer::start_game()
 {
+  dbg("[game_master] start_game");
   // todo: is everything that should be clean actually clean?
-  players = {};
   killed_this_turn = {};
   positions = {};
   bombs = {};
@@ -455,12 +509,15 @@ server_messages::Turn RoboticServer::start_game()
   server_messages::Turn turn{0, {}};
   auto& [_turnno, events] = turn;
   for (const auto& [plid, _] : players) {
+    scores[plid] = 0;
+    dbg("[game_master] handing seats on the booard");
     Position pos = {rand() % size_x, rand() % size_y};
     positions[plid] = pos;
     events.push_back(server_messages::PlayerMoved{plid, pos});
   }
 
   for (uint16_t i = 0; i < initial_blocks; ++i) {
+    dbg("[game_master] placing first blocks");
     Position pos = {rand() % size_x, rand() % size_y};
     blocks.insert(pos);
     events.push_back(server_messages::BlockPlaced{pos});
@@ -472,6 +529,7 @@ server_messages::Turn RoboticServer::start_game()
 void RoboticServer::end_game()
 {
   send_to_all(ServerMessage{scores});
+  players = {};
 
   for (size_t i = 0; i < clients.size(); ++i) {
     std::optional<ConnectedClient>& cm = clients.at(i);
@@ -485,18 +543,22 @@ void RoboticServer::end_game()
 // Thread functions
 void RoboticServer::acceptor()
 {
+  dbg("[acceptor] hello");
   for (;;) {
     if (number_of_clients > MAX_CLIENTS)
       throw ServerLogicError{
         "Number of connected clients shouldn't exceed the max number of clients!"};
 
     if (number_of_clients == MAX_CLIENTS) {
+      dbg("[acceptor] no place for new clients, sleepy go bye bye");
       std::unique_lock lk{acceptor_mutex};
       for_places.wait(lk, [this] {return number_of_clients < MAX_CLIENTS;});
     }
 
     tcp::socket new_client(io_ctx);
     tcp_acceptor.accept(new_client);
+    dbg("[acceptor] accepted new client ", new_client.remote_endpoint().address(),
+        ":", new_client.remote_endpoint().port());
     try {
       hail(new_client);
     } catch (std::exception& e) {
@@ -524,6 +586,7 @@ void RoboticServer::acceptor()
 
 void RoboticServer::client_handler(size_t i)
 {
+  dbg("[client_handler] hello, im handling client ", i);
   using namespace client_messages;
   Deserialiser<ReaderTCP> deser{clients.at(i)->sock};
   for (;;) {
@@ -535,6 +598,7 @@ void RoboticServer::client_handler(size_t i)
         std::visit([this, i] <typename Cm> (const Cm& cm) {
             if constexpr(std::same_as<Cm, Join>) {
               if (!clients.at(i)->in_game) {
+                dbg("[client_handler] our new mate wants to join, very well");
                 std::string addr = address_from_sock(clients.at(i)->sock);
                 joined.push({i, {cm, addr}});
               }
@@ -545,6 +609,7 @@ void RoboticServer::client_handler(size_t i)
       }
     } catch (std::exception& e) {
       // upon disconnection this thread says au revoir
+      dbg("[client_handler] something bad happened, au revoir: ", e.what());
       std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
       clients.at(i) = {};
       --number_of_clients;
@@ -556,15 +621,19 @@ void RoboticServer::client_handler(size_t i)
 
 void RoboticServer::join_handler()
 {
+  dbg("[join_handler] salut");
   for (;;) {
     // all players are here...
-    if (players.size() == players_count) {
+    if (lobby && players.size() == players_count) {
+      dbg("required number of players joined, waking up the gm");
       lobby = false;
       // wake up the game master, he has waited enough did he not
       for_game.notify_all();
     }
 
     auto [i, player] = joined.pop();
+
+    dbg("[join_handler] popped client ", i, player.first, player.second);
 
     if (!lobby)
       continue;
@@ -581,6 +650,7 @@ void RoboticServer::join_handler()
           players.insert({id, player});
         }
         playing_clients.insert({id, i});
+        dbg("[join_handler] accepting him, giving him id ", (int)id);
         accepted = true;
       }
     }
@@ -592,23 +662,27 @@ void RoboticServer::join_handler()
 
 void RoboticServer::game_master()
 {
+  dbg("[game_master] hello");
   size_t turn_number = 0;
   for (;;) {
     server_messages::Turn current_turn{turn_number, {}};
     if (turn_number == game_length || lobby) {
+      dbg("[game_master] lobby state or game ended, sleepy go bye bye");
       lobby = true;
       std::unique_lock lk{game_master_mutex};
       for_game.wait(lk, [this] { return !lobby; });
+      dbg("[game_master] im awaken! :)");
       // we are awake, the game has just started. Let's get this going then shan't we.
       current_turn = turn0 = start_game();
+      turn_number = 0;
     }
 
     // wait for the turn to pass...
+    dbg("[game_master] going to sleep for ", turn_duration);
     std::this_thread::sleep_for(std::chrono::milliseconds(turn_duration));
 
     // todo input from playing clients
     if (turn_number > 0) {
-      killed_this_turn = {};
       do_bombing(current_turn);
       gather_moves(current_turn);
       std::lock_guard<std::mutex> lk{turn0_mutex};
@@ -619,6 +693,10 @@ void RoboticServer::game_master()
 
     // todo send it to clients
     send_to_all(ServerMessage{current_turn});
+    for (PlayerId id : killed_this_turn) {
+      ++scores.at(id);
+    }
+    killed_this_turn = {};
 
     ++turn_number;
     // todo game ended --> send ths information to everyone and then set
