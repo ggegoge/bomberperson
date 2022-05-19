@@ -500,7 +500,7 @@ int main(int argc, char* argv[])
     desc.add_options()
       ("help,h", "produce this help message")
       ("gui-address,d", po::value<string>(&gui_addr)->required(),
-       "gui address, (IPv4):(port) or (IPv6):(port) or (hostname):(port)")
+       "gui address, IPv4:port or IPv6:port or hostname:port")
       ("player-name,n", po::value<string>(&player_name)->required(), "player name")
       ("server-address,s", po::value<string>(&server_addr)->required(),
        "server address, same format as gui address")
