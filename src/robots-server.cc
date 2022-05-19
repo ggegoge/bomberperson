@@ -18,6 +18,7 @@
 #include <semaphore>
 #include <set>
 #include <thread>
+#include <atomic>
 #include <tuple>
 #include <type_traits>
 #include <regex>
@@ -176,13 +177,14 @@ class RoboticServer {
   std::vector<std::mutex> clients_mutices =
     std::vector<std::mutex>(MAX_CLIENTS);
   // todo: this variable should be atomic i think
-  size_t number_of_clients = 0;
+  std::atomic_size_t number_of_clients = 0;
   BlockingQueue<std::pair<size_t, server_messages::Player>> joined;
 
   server_messages::Hello hello;
   server_messages::Turn turn0{0, {}};
 
   // threading
+  // todo: many of those arent needed, are they
   std::counting_semaphore<MAX_CLIENTS> clients_sem{MAX_CLIENTS};
   std::mutex acceptor_mutex;
   std::mutex game_master_mutex;
@@ -263,6 +265,10 @@ private:
   Position do_move(Position pos, client_messages::Direction dir) const;
 
   void send_to_all(const ServerMessage& msg);
+
+  // Wrapper for sending, the second one ignores exceptions.
+  void send_bytes(const std::vector<uint8_t>& bytes, tcp::socket& sock);
+  bool try_send_bytes(const std::vector<uint8_t>& bytes, tcp::socket& sock);
 };
 
 // Utility functions
@@ -270,27 +276,46 @@ void RoboticServer::hail(tcp::socket& client)
 {
   Serialiser ser;
   ser << ServerMessage{hello};
-  client.send(boost::asio::buffer(ser.drain_bytes()));
+  send_bytes(ser.drain_bytes(), client);
 
-  {
+  if (lobby) {
+    server_messages::GameStarted gs;
+    {
+      std::lock_guard<std::mutex> lk{players_mutex};
+      gs = players;
+    }
+    ser << ServerMessage{gs};
+    try_send_bytes(ser.drain_bytes(), client);
+    std::lock_guard<std::mutex> lk{turn0_mutex};
+    ser << ServerMessage{turn0};
+    send_bytes(ser.drain_bytes(), client);
+  } else {
     std::lock_guard<std::mutex> lk{players_mutex};
-    if (lobby) {
-      server_messages::GameStarted gs{players};
-      ser << ServerMessage{gs};
-      client.send(boost::asio::buffer(ser.drain_bytes()));
-      std::lock_guard<std::mutex> lk{turn0_mutex};
-      ser << ServerMessage{turn0};
-      client.send(boost::asio::buffer(ser.drain_bytes()));
-    } else {
-      for (const auto& [plid, player] : players) {
-        server_messages::AcceptedPlayer ap{plid, player};
-        ser << ServerMessage{ap};
-        client.send(boost::asio::buffer(ser.drain_bytes()));
-      }
+    for (const auto& [plid, player] : players) {
+      server_messages::AcceptedPlayer ap{plid, player};
+      ser << ServerMessage{ap};
+      send_bytes(ser.drain_bytes(), client);
     }
   }
-
 }
+
+void RoboticServer::send_bytes(const std::vector<uint8_t>& bytes, tcp::socket& sock)
+{
+  sock.send(boost::asio::buffer(bytes));
+}
+
+bool RoboticServer::try_send_bytes(const std::vector<uint8_t>& bytes, tcp::socket& sock)
+{
+  try {
+    send_bytes(bytes, sock);
+    return true;
+  } catch (std::exception& e) {
+    dbg("failed to send to ", sock.remote_endpoint().address(),
+        ":", sock.remote_endpoint().port());
+    return false;
+  }
+}
+
 
 void RoboticServer::send_to_all(const ServerMessage& msg)
 {
@@ -300,15 +325,8 @@ void RoboticServer::send_to_all(const ServerMessage& msg)
   for (size_t i = 0; i < clients.size(); ++i) {
     std::optional<ConnectedClient>& cm = clients.at(i);
     std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
-    if (cm.has_value()) {
-      try {
-        cm->sock.send(boost::asio::buffer(ser.to_bytes()));
-      } catch (std::exception& e) {
-        // ignorint the exception, will get handled by the client thread
-        dbg("[send_to_all] failed to send to client ", i);
-        continue;
-      }
-    }
+    if (cm.has_value())
+      try_send_bytes(ser.to_bytes(), cm->sock);
   }
 }
 
@@ -520,7 +538,10 @@ void RoboticServer::join_handler()
       if (clients.at(i).has_value()) {
         clients.at(i)->id = id;
         clients.at(i)->in_game = true;
-        players.insert({id, player});
+        {
+          std::lock_guard<std::mutex> lk{players_mutex};
+          players.insert({id, player});
+        }
         playing_clients.insert({id, i});
         accepted = true;
       }
@@ -540,7 +561,7 @@ void RoboticServer::game_master()
       lobby = true;
       std::unique_lock lk{game_master_mutex};
       for_game.wait(lk, [this] { return !lobby; });
-      // we woken up, the game has just started. Let's get this going then shall we.
+      // we are awake, the game has just started. Let's get this going then shan't we.
       current_turn = turn0 = start_game();
     }
 
@@ -563,10 +584,10 @@ void RoboticServer::game_master()
 
     ++turn_number;
     // todo game ended --> send ths information to everyone and then set
-    // in game to false and at the end set lobby to true and wait in the next it
-    if (turn_number == game_length) {
+    // in game to false.
+    if (turn_number == game_length)
       end_game();
-    }
+
   }
 }
 
@@ -594,7 +615,7 @@ int main(int argc, char* argv[])
     uint16_t size_x;
     uint16_t size_y;
     uint16_t port;
-    
+
     po::options_description desc{"Allowed flags for the robotic client"};
     desc.add_options()
       ("help,h", "produce this help message")
