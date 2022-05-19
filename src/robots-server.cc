@@ -210,7 +210,7 @@ class RoboticServer {
   std::map<BombId, server_messages::Bomb> bombs;
   std::map<PlayerId, Score> scores;
   std::set<Position> blocks;
-  std::vector<Position> explosions;
+  std::vector<BombId> explosions;
 public:
   RoboticServer(const std::string& name, uint16_t timer, uint8_t players_count,
                 uint64_t turn_duration, uint16_t radius, uint16_t initial_blocks,
@@ -331,8 +331,28 @@ void RoboticServer::send_to_all(const ServerMessage& msg)
 }
 
 // todo do bombing
-void RoboticServer::do_bombing(server_messages::Turn&)
+void RoboticServer::do_bombing(server_messages::Turn& turn)
 {
+  auto& [_, events] = turn;
+
+  for (auto& [bombid, bomb] : bombs) {
+    auto& [bomb_pos, bomb_timer] = bomb;
+    --bomb_timer;
+    if (bomb_timer == 0) {
+      explosions.push_back(bombid);
+      std::set<PlayerId> killed;
+      std::set<Position> destroyed;
+      // find those killed........ todo
+
+      // W wyniku eksplozji bomby zostają zniszczone wszystkie roboty w jej
+      // zasięgu oraz jedynie najbliższe bloki w jej zasięgu. Eksplozja bomby ma
+      // kształt krzyża o długości ramienia równej parametrowi
+      // `explosion_radius`. Jeśli robot stoi na bloku, który zostanie
+      // zniszczony w wyniku eksplozji, to taki robot również jest niszczony.
+
+      events.push_back(server_messages::BombExploded{bombid, killed, destroyed});
+    }
+  }
 }
 
 void RoboticServer::gather_moves(server_messages::Turn& turn)
@@ -361,6 +381,7 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       PlayerId plid = id;
       const ClientMessage& cmsg = maybe_cl->current_move.value();
       std::visit([this, &turn, plid] <typename Cm> (const Cm& cm) {
+          auto& [_, events] = turn;
           if constexpr(std::same_as<Cm, Join>) {
             throw ServerLogicError("Join should not be placed as current move!");
           } else if constexpr(std::same_as<Cm, PlaceBomb>) {
@@ -369,16 +390,18 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
             server_messages::Bomb bomb{positions.at(plid), timer};
             bombs.insert({bombid, bomb});
             server_messages::BombPlaced bp{bombid, bomb.first};
-            turn.second.push_back(bp);
+            events.push_back(bp);
           } else if constexpr(std::same_as<Cm, PlaceBlock>) {
-            blocks.insert(positions.at(plid));
+            Position pos = positions.at(plid);
+            blocks.insert(pos);
+            events.push_back(server_messages::BlockPlaced{pos});
           } else if constexpr(std::same_as<Cm, Move>) {
             Position pos = positions.at(plid);
             Position new_pos = do_move(pos, cm);
-            if (pos != new_pos) {
+            if (!blocks.contains(new_pos) && pos != new_pos) {
               positions.at(plid) = new_pos;
               server_messages::PlayerMoved pm{plid, new_pos};
-              turn.second.push_back(pm);
+              events.push_back(pm);
             }
           } else {
             static_assert(always_false_v<Cm>, "Non-exhaustive pattern matching!");
@@ -420,6 +443,7 @@ Position RoboticServer::do_move(Position pos,
 // todo: make the zeroth turn
 server_messages::Turn RoboticServer::start_game()
 {
+  // todo: is everything that should be clean actually clean?
   players = {};
   killed_this_turn = {};
   positions = {};
@@ -427,8 +451,22 @@ server_messages::Turn RoboticServer::start_game()
   scores = {};
   blocks = {};
   explosions = {};
-  // todo: generate random board
-  return {0, {}};
+
+  server_messages::Turn turn{0, {}};
+  auto& [_turnno, events] = turn;
+  for (const auto& [plid, _] : players) {
+    Position pos = {rand() % size_x, rand() % size_y};
+    positions[plid] = pos;
+    events.push_back(server_messages::PlayerMoved{plid, pos});
+  }
+
+  for (uint16_t i = 0; i < initial_blocks; ++i) {
+    Position pos = {rand() % size_x, rand() % size_y};
+    blocks.insert(pos);
+    events.push_back(server_messages::BlockPlaced{pos});
+  }
+
+  return turn;
 }
 
 void RoboticServer::end_game()
