@@ -267,6 +267,8 @@ private:
   void killed_in_radius(std::set<PlayerId>& killed, Position pos,
                         client_messages::Direction dir);
 
+  void kill_on_position(std::set<PlayerId>& killed, Position pos);
+
   // gather moves
   void gather_moves(server_messages::Turn& turn);
 
@@ -367,15 +369,22 @@ void RoboticServer::do_bombing(server_messages::Turn& turn)
         killed_in_radius(killed, bomb_pos, d);
       }
 
+      // todo prettify this
       // find destroyed blocks if there are any...
+      auto it = blocks.find(bomb_pos);
+      if (it != blocks.end()) {
+        destroyed.insert(bomb_pos);
+        blocks.erase(it);
+        kill_on_position(killed, bomb_pos);
+      }
+
       for (client_messages::Direction d : dirs) {
         Position neigh = do_move(bomb_pos, d);
-        if (neigh != bomb_pos) {
-          auto it = blocks.find(neigh);
-          if (it != blocks.end()) {
-            destroyed.insert(neigh);
-            blocks.erase(it);
-          }
+        it = blocks.find(neigh);
+        if (it != blocks.end()) {
+          destroyed.insert(neigh);
+          blocks.erase(it);
+          kill_on_position(killed, neigh);
         }
       }
       events.push_back(server_messages::BombExploded{bombid, killed, destroyed});
@@ -399,54 +408,64 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       continue;
     }
 
-    if (!maybe_cl->current_move.has_value()) {
-      dbg("[gather_moves] client ", idx, " ie player ", (int)id, " has not moved");
-      continue;
-    }
-
-
-    dbg("[game_master] not killed -> handling this players moves");
-    using namespace client_messages;
-    PlayerId plid = id;
-    const ClientMessage& cmsg = maybe_cl->current_move.value();
-    std::visit([this, &turn, plid] <typename Cm> (const Cm& cm) {
-        dbg("seeing a client msg\n");
-        auto& [_, events] = turn;
-        if constexpr(std::same_as<Cm, Join>) {
-          throw ServerLogicError("Join should not be placed as current move!");
-        } else if constexpr(std::same_as<Cm, PlaceBomb>) {
-          // get an id for the bomb
-          BombId bombid = get_free_id(bombs);
-          server_messages::Bomb bomb{positions.at(plid), timer};
-          bombs.insert({bombid, bomb});
-          server_messages::BombPlaced bp{bombid, bomb.first};
-          events.push_back(bp);
-        } else if constexpr(std::same_as<Cm, PlaceBlock>) {
-          Position pos = positions.at(plid);
-            blocks.insert(pos);
-            events.push_back(server_messages::BlockPlaced{pos});
-        } else if constexpr(std::same_as<Cm, Move>) {
-          dbg("[game_master] he mooved..");
-          Position pos = positions.at(plid);
-          Position new_pos = do_move(pos, cm);
-          if (!blocks.contains(new_pos) && pos != new_pos) {
-            positions.at(plid) = new_pos;
-            server_messages::PlayerMoved pm{plid, new_pos};
-            events.push_back(pm);
-          }
-        } else {
-          static_assert(always_false_v<Cm>, "Non-exhaustive pattern matching!");
-        }
-      }, cmsg);
-
     if (killed_this_turn.contains(id)) {
+      dbg("[game master] player ", (int)id, " got killed this turn, new place for him");
       Position pos = {rand() % size_x, rand() % size_y};
       positions[id] = pos;
-      turn.second.push_back(server_messages::PlayerMoved{plid, pos});
+      turn.second.push_back(server_messages::PlayerMoved{id, pos});
+    } else {
+      if (!maybe_cl->current_move.has_value()) {
+        dbg("[gather_moves] client ", idx, " ie player ", (int)id, " has not moved");
+        continue;
+      }
+      dbg("[game_master] not killed -> handling this players moves");
+      using namespace client_messages;
+      PlayerId plid = id;
+      const ClientMessage& cmsg = maybe_cl->current_move.value();
+      std::visit([this, &turn, plid] <typename Cm> (const Cm& cm) {
+          dbg("seeing a client msg\n");
+          auto& [_, events] = turn;
+          if constexpr(std::same_as<Cm, Join>) {
+            throw ServerLogicError("Join should not be placed as current move!");
+          } else if constexpr(std::same_as<Cm, PlaceBomb>) {
+            // get an id for the bomb
+            BombId bombid = get_free_id(bombs);
+            server_messages::Bomb bomb{positions.at(plid), timer};
+            bombs.insert({bombid, bomb});
+            server_messages::BombPlaced bp{bombid, bomb.first};
+            events.push_back(bp);
+          } else if constexpr(std::same_as<Cm, PlaceBlock>) {
+            Position pos = positions.at(plid);
+            blocks.insert(pos);
+            events.push_back(server_messages::BlockPlaced{pos});
+          } else if constexpr(std::same_as<Cm, Move>) {
+            dbg("[game_master] he mooved..");
+            Position pos = positions.at(plid);
+            Position new_pos = do_move(pos, cm);
+            if (!blocks.contains(new_pos) && pos != new_pos) {
+              positions.at(plid) = new_pos;
+              server_messages::PlayerMoved pm{plid, new_pos};
+              events.push_back(pm);
+            }
+          } else {
+            static_assert(always_false_v<Cm>, "Non-exhaustive pattern matching!");
+          }
+        }, cmsg);
     }
     // delete the old move
     maybe_cl->current_move = {};
   }
+}
+
+void RoboticServer::kill_on_position(std::set<PlayerId>& killed, Position pos)
+{
+  // now check if there are players on pos but how the hell would i do that?
+  // piss and shit
+  for (const auto& [id, pl_pos] : positions)
+    if (pl_pos == pos) {
+      killed.insert(id);
+      killed_this_turn.insert(id);
+    }
 }
 
 void RoboticServer::killed_in_radius(std::set<PlayerId>& killed, Position pos,
@@ -454,17 +473,9 @@ void RoboticServer::killed_in_radius(std::set<PlayerId>& killed, Position pos,
 {
   for (uint16_t i = 0; i < radius; ++i) {
     Position next = do_move(pos, dir);
-
+    kill_on_position(killed, pos);
     if (next == pos || blocks.contains(next))
       return;
-
-    // now check if there are players on pos but how the hell would i do that?
-    // piss and shit
-    for (const auto& [id, pl_pos] : positions)
-      if (pl_pos == next) {
-        killed.insert(id);
-        killed_this_turn.insert(id);
-      }
 
     pos = next;
   }
@@ -529,6 +540,13 @@ server_messages::Turn RoboticServer::start_game()
 
 void RoboticServer::end_game()
 {
+  std::cout << "GAME ENDED!!!\n";
+
+  // todo: add assertions for this score matching the aggregated scores
+  for (auto [id, score] : scores)
+    std::cout << static_cast<int>(id) << "\t" << players.at(id).first
+         << "@" << players.at(id).second << " got killed " << score << " times!\n";
+
   send_to_all(ServerMessage{scores});
   players = {};
 
@@ -611,6 +629,7 @@ void RoboticServer::client_handler(size_t i)
     } catch (std::exception& e) {
       // upon disconnection this thread says au revoir
       dbg("[client_handler] something bad happened, au revoir: ", e.what());
+      dbg("[client_handler] disconecting this client then");
       std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
       clients.at(i) = {};
       --number_of_clients;
@@ -684,6 +703,7 @@ void RoboticServer::game_master()
 
     // todo input from playing clients
     if (turn_number > 0) {
+      killed_this_turn = {};
       do_bombing(current_turn);
       gather_moves(current_turn);
       std::lock_guard<std::mutex> lk{turn0_mutex};
@@ -697,7 +717,6 @@ void RoboticServer::game_master()
     for (PlayerId id : killed_this_turn) {
       ++scores.at(id);
     }
-    killed_this_turn = {};
 
     ++turn_number;
     // todo game ended --> send ths information to everyone and then set
