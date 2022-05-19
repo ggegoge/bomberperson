@@ -389,6 +389,8 @@ void RoboticClient::update_game()
 
         for (PlayerId plid : game_state.killed_this_turn)
           ++game_get_scores(gl)[plid];
+
+        game_state.killed_this_turn = {};
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
       }
