@@ -1,7 +1,5 @@
 // Implementation of a client for the robots game.
 
-// todo: logging only if NDEBUG?
-
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/resolver_base.hpp>
@@ -42,6 +40,22 @@ using server_messages::ServerMessage;
 using client_messages::ClientMessage;
 
 namespace {
+
+#ifdef NDEBUG
+constexpr bool debug = false;
+#else
+constexpr bool debug = true;
+#endif  // NDEBUG
+
+// Print a debug line to the stderr (only if NDEBUG is not defined).
+template <typename... Args>
+void dbg(Args&&... args)
+{
+  if (debug) {
+    (cerr << ... << args);
+    cerr << "\n";
+  }
+}
 
 class ClientError : public std::runtime_error {
 public:
@@ -214,12 +228,12 @@ private:
 
 void RoboticClient::hello_handler(server_messages::Hello& h)
 {
-  cerr << "[game_handler] hello handler\n";
-
+  dbg("[game_handler] hello handler");
   using namespace display_messages;
   auto& [server_name, players_count, size_x, size_y,
          game_length, explosion_radius, bomb_timer] = h;
-  cerr << "[hello_handler] hello from " << server_name << "!\n";
+  dbg("[hello_handler] hello from ", server_name);
+
   Lobby l{server_name, players_count, size_x, size_y, game_length,
     explosion_radius, bomb_timer, map<PlayerId, server_messages::Player>{}};
 
@@ -234,8 +248,7 @@ void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
   using namespace display_messages;
   visit([&ap] <typename GorL> (GorL& gl) {
       auto& [id, player] = ap;
-      cerr << "[ap_handler]: new player " << player.first
-           << "@" << player.second << "\n";
+      dbg("[ap_handler]: new player ", player.first, "@", player.second);
       state_get_players(gl).insert({id, player});
     }, game_state.state);
 }
@@ -266,8 +279,7 @@ void RoboticClient::lobby_to_game()
 // do we get send this message only when we joined a game that 
 void RoboticClient::gs_handler(server_messages::GameStarted& gs)
 {
-  cerr << "[game_handler] gs_handler\n";
-
+  dbg("[game_handler] gs_handler");
   using namespace display_messages;
   game_state.observer = true;
 
@@ -313,8 +325,7 @@ void RoboticClient::apply_event(display_messages::Game& game,
 void RoboticClient::turn_handler(server_messages::Turn& turn)
 {
   auto& [turnno, events] = turn;
-  cerr << "[game_handler] turn handler, turn=" << turnno << "\n";
-
+  dbg("[game_handler] turn handler, turn=", turnno);
   lobby_to_game();
   display_messages::Game& current_game =
     get<display_messages::Game>(game_state.state);
@@ -333,8 +344,7 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
 
 void RoboticClient::ge_handler(server_messages::GameEnded& ge)
 {
-  cerr << "[game_handler] ge_handler\n";
-
+  dbg("[game_handler] ge_handler");
   using namespace display_messages;
   // note: we do not care about races towards "lobby"
   game_state.lobby = true;
@@ -437,19 +447,19 @@ void RoboticClient::input_handler()
   InputMessage inp;
 
   for (;;) {
-    cerr << "[input_handler] waiting for input\n";
+    dbg("[input_handler] waiting for input");
     gui_deser.readable().sock_fill(gui_socket, gui_endpoint);
 
     try {
       gui_deser >> inp;
       gui_deser.no_trailing_bytes();
     } catch (UnmarshallingError& e) {
-      cerr << "[input_handler] invalid input (ignored): " << e.what() << "\n";
+      dbg("[input_handler] invalid input (ignored): ", e.what());
       continue;
     }
 
     if (game_state.lobby) {
-      cerr << "[input_handler] first input in the lobby --> trying to join\n";
+      dbg("[input_handler] first input in the lobby --> trying to join");
       game_state.lobby = false;
       msg = Join{name};
     } else {
@@ -457,8 +467,7 @@ void RoboticClient::input_handler()
     }
 
     server_ser << msg;
-    cerr << "[input_handler] sending " << server_ser.size()
-         << " bytes of input to the server\n";
+    dbg("[input_handler] sending ", server_ser.size(), " bytes of input to the server");
     server_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
   }
 }
@@ -469,14 +478,14 @@ void RoboticClient::game_handler()
   DisplayMessage msg;
 
   for (;;) {
-    cerr << "[game_handler] tying to read a message from server\n";
+    dbg("[game_handler] tying to read a message from server");
     server_deser >> updt;
-    cerr << "[game_handler] message read, proceeding to handle it!\n";
+    dbg("[game_handler] message read, proceeding to handle it!");
     server_msg_handler(updt);
 
     update_game();
     gui_ser << game_state.state;
-    cerr << "[game_handler] sending " << gui_ser.size() << " bytes to gui\n";
+    dbg("[game_handler] sending ",  gui_ser.size(), " bytes to gui");
     gui_socket.send_to(boost::asio::buffer(gui_ser.drain_bytes()), gui_endpoint);
   }
 }
