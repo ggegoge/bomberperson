@@ -11,6 +11,7 @@
 #include <boost/program_options/value_semantic.hpp>
 #include <condition_variable>
 #include <chrono>
+#include <limits>
 #include <random>
 #include <map>
 #include <mutex>
@@ -722,7 +723,7 @@ int main(int argc, char* argv[])
   try {
     std::string name;
     uint16_t timer;
-    uint8_t players_count;
+    uint16_t players_count;
     uint64_t turn_duration;
     uint16_t radius;
     uint16_t initial_blocks;
@@ -740,7 +741,7 @@ int main(int argc, char* argv[])
        "listen on port")
       ("bomb-timer,b", po::value<uint16_t>(&timer)->required())
       ("turn-duration,d", po::value<uint64_t>(&turn_duration)->required())
-      ("players-count,c", po::value<uint8_t>(&players_count)->required())
+      ("players-count,c", po::value<uint16_t>(&players_count)->required())
       ("explosion-radius,e", po::value<uint16_t>(&radius)->required())
       ("initial-blocks,k", po::value<uint16_t>(&initial_blocks)->required())
       ("game-length,l", po::value<uint16_t>(&game_length)->required())
@@ -766,7 +767,12 @@ int main(int argc, char* argv[])
     // notify about missing options only after printing help
     po::notify(vm);
 
-    RoboticServer server{name, timer, players_count, turn_duration, radius, initial_blocks,
+    if (players_count > std::numeric_limits<uint8_t>::max()) {
+      throw ServerError{"players-count must fit in one byte!"};
+    }
+
+    RoboticServer server{name, timer, static_cast<uint8_t>(players_count),
+      turn_duration, radius, initial_blocks,
       game_length, seed, size_x, size_y, port};
 
     server.run();
