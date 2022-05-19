@@ -5,7 +5,7 @@
 // abstraction (aka marshalling framework) that can still be used with other
 // complex structures. It relies heavily on overloading the >> and << operators
 // so if you provide your overloaded versions of those for different types then
-// this can still work for them. You can see it done in messages.h/cc.
+// this can still work for them. You can see it done in messages.h.
 
 #ifndef _MARSHAL_H_
 #define _MARSHAL_H_
@@ -22,22 +22,28 @@
 // htonl and htons
 #include <arpa/inet.h>
 
+#include <type_traits>
+#include <exception>
+#include <stdexcept>
 #include <concepts>
+#include <variant>
+#include <string>
 #include <vector>
 #include <tuple>
 #include <map>
 #include <set>
-#include <string>
 #include <cstddef>
 #include <cstdint>
 
 // This concept describes a class from which the deserialiser will read bytes.
 // It should be possible to extract a chosen number of those depending on what
-// do you want to read.
+// do you want to read and it should tell you how many bytes are there to be
+// read at any given time.
 template <typename T>
 concept Readable = requires (T x, size_t nbytes)
 {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
+  {x.avalaible()} -> std::same_as<size_t>;
 };
 
 // This concepts ensures that type Seq represents an iterable sized container.
@@ -50,11 +56,19 @@ concept Iterable = requires (Seq seq)
   {seq.cend()};
 };
 
+// Can only unmarshal enums which have a dummy last value that helps check its size.
+template <typename T>
+concept UnmarshallableEnum = requires
+{
+  std::is_enum_v<T>;
+  T::BOLLOCKS;
+};
+
 // todo: comparing sizes instead of same_as? perhaps someone gives us an int
 // and that should be fine?
 // Changing the byte order. Numbers are serialised in the network order.
 template <typename T>
-constexpr T hton(T num)
+inline constexpr T hton(T num)
 {
   if constexpr (std::same_as<T, uint64_t>)
     return be64toh(num);
@@ -67,7 +81,7 @@ constexpr T hton(T num)
 }
 
 template <typename T>
-constexpr T ntoh(T num)
+inline constexpr T ntoh(T num)
 {
   if constexpr (std::is_same_v<T, uint64_t>)
     return htobe64(num);
@@ -79,15 +93,18 @@ constexpr T ntoh(T num)
     return num;
 }
 
+// Unmarshalling may fail whereas Marshalling is our protocol infalliable.
+class UnmarshallingError : public std::runtime_error {
+public:
+  UnmarshallingError()
+    : std::runtime_error{"Error in unmarshalling!"} {}
+  UnmarshallingError(const std::string& msg) : std::runtime_error{msg} {}
+};
+
 // Class for data serialisation.
 class Serialiser {
   std::vector<uint8_t> out;
 public:
-  void clean()
-  {
-    out = {};
-  }
-
   size_t size() const
   {
     return out.size();
@@ -103,7 +120,7 @@ public:
     return out;
   }
 
-  // This combines the action of clean() and to_bytes() as it is often useful.
+  // Get current output and clean it.
   std::vector<uint8_t> drain_bytes()
   {
     std::vector<uint8_t> empty;
@@ -139,6 +156,7 @@ public:
       out.push_back(static_cast<uint8_t>(c));
   }
 
+  // Marshalling of sets, vectors, maps etc.
   template <Iterable Seq>
   void ser(const Seq& seq)
   {
@@ -149,7 +167,7 @@ public:
       *this << item;
   }
 
-  // Note: thank's to this function map is also serialisable due to being and
+  // Note: thanks to this function std::map is also serialisable due to being an
   // iterable of key-value pairs.
   template <typename T1, typename T2>
   void ser(const std::pair<T1, T2>& pair)
@@ -157,12 +175,27 @@ public:
     *this << pair.first << pair.second;
   }
 
-  template <typename ... Ts>
+  template <typename... Ts>
   void ser(const std::tuple<Ts...>& tuple)
   {
-    std::apply([this] (auto... v) { ( *this << ... << v); }, tuple);
+    std::apply([this] (const auto&... v) { ( *this << ... << v); }, tuple);
   }
 
+  template <typename... Ts>
+  void ser(const std::variant<Ts...>& var)
+  {
+    uint8_t index = static_cast<uint8_t>(var.index());
+    std::visit([this, index] <typename T> (const T& x) {
+        ser(index);
+        *this << x;
+      }, var);
+  }
+
+  template <typename T>
+  requires std::is_empty_v<T>
+  void ser(const T&) { return; }
+
+  // The serialisation operator proper.
   template <typename T>
   Serialiser& operator<<(const T& item)
   {
@@ -176,8 +209,8 @@ class Deserialiser {
   R r;
 
 public:
-  Deserialiser(const R& r) : r(r) {}
-  Deserialiser(R&& r) : r(std::move(r)) {}
+  Deserialiser(const R& r) : r{r} {}
+  Deserialiser(R&& r) : r{std::move(r)} {}
 
   // This allows for changing and accessing the underlying readable.
   R& readable()
@@ -185,24 +218,59 @@ public:
     return r;
   }
 
+  size_t avalaible() const
+  {
+    return r.avalaible();
+  }
+
+  // Data not ending can be sometimes considered an unmarshalling error.
+  void no_trailing_bytes() const
+  {
+    if (avalaible())
+      throw UnmarshallingError{"Trailing bytes!"};
+  }
+
   // Note: we do not offer a function for deserialising enums as it is quite
   // dangerous considering there is no range check done on them upon conversion.
   template <std::integral T>
   void deser(T& item) requires (!std::is_enum_v<T>)
   {
-    std::vector<uint8_t> buff = r.read(sizeof(T));
-    item = ntoh<T>(*(T*)(buff.data()));
-  }
-  
-  void deser(std::string& str)
-  {
-    uint8_t len;
-    deser(len);
-    std::vector<uint8_t> bytes = r.read(len);
-    str.assign(reinterpret_cast<char*>(bytes.data()), len);
+    try {
+      std::vector<uint8_t> buff = r.read(sizeof(T));
+      item = ntoh<T>(*(T*)(buff.data()));
+    } catch (std::exception& e) {
+      std::string err = "Failed to unmarshal a number: ";
+      throw UnmarshallingError{err + e.what()};
+    }
   }
 
-  // todo: template for iterable like above?
+  template <UnmarshallableEnum T>
+  void deser(T& item)
+  {
+    uint8_t kind;
+    deser(kind);
+
+    if (kind >= static_cast<uint8_t>(T::BOLLOCKS))
+      throw UnmarshallingError{"Byte does not match the enum!"};
+
+    item = static_cast<T>(kind);
+  }
+
+  void deser(std::string& str)
+  {
+    try {
+      uint8_t len;
+      deser(len);
+      std::vector<uint8_t> bytes = r.read(len);
+      str.assign(reinterpret_cast<char*>(bytes.data()), len);
+    } catch (UnmarshallingError& e) {
+      throw;
+    } catch (std::exception& e) {
+      std::string err = "Failed to unmarshal a string: ";
+      throw UnmarshallingError{err + e.what()};
+    }
+  }
+
   template <typename T>
   void deser(std::vector<T>& seq)
   {
@@ -229,7 +297,6 @@ public:
     }
   }
 
-
   template <typename K, typename V>
   void deser(std::map<K, V>& map)
   {
@@ -249,12 +316,52 @@ public:
   {
     *this >> pair.first >> pair.second;
   }
-  
+
+  template <typename... Ts>
+  void deser(std::tuple<Ts...>& tuple)
+  {
+    std::apply([this] (auto&... v) { ( *this >> ... >> v); }, tuple);
+  }
+
+  // The trickiest. First create a default variant based on the index and then
+  // fill the stored value.
+  template <typename... Ts>
+  void deser(std::variant<Ts...>& var)
+  {
+    using Var = std::variant<Ts...>;
+    uint8_t kind;
+    deser(kind);
+    var = variant_from_index<Var>(kind);
+    std::visit([this] <typename T> (T& x) {
+        *this >> x;
+      }, var);
+  }
+
+  template <typename T>
+  requires std::is_empty_v<T>
+  void deser(T&) { return; }
+
   template <typename T>
   Deserialiser& operator>>(T& item)
   {
     deser(item);
     return *this;
+  }
+
+private:
+  // Helper function for creating a variant from chosen index.
+  // source: https://stackoverflow.com/a/60567091/9058764
+  template <class Var, std::size_t I = 0>
+  Var variant_from_index(std::size_t index)
+  {
+	if constexpr(I >= std::variant_size_v<Var>) {
+      throw UnmarshallingError{"Index does not match the variant!"};
+	} else {
+      // this changes runtime index into a compile time index, brilliant
+      return index == 0
+        ? Var{std::in_place_index<I>}
+        : variant_from_index<Var, I + 1>(index - 1);
+    }
   }
 };
 
