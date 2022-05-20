@@ -182,8 +182,7 @@ public:
   }
 
   template <typename T>
-  requires std::is_empty_v<T>
-  void ser(const T&) { return; }
+  void ser(const T&) requires std::is_empty_v<T> {}
 
   // The serialisation operator proper.
   template <typename T>
@@ -316,8 +315,7 @@ public:
   }
 
   template <typename T>
-  requires std::is_empty_v<T>
-  void deser(T&) { return; }
+  void deser(T&) requires std::is_empty_v<T> {}
 
   template <typename T>
   Deserialiser& operator>>(T& item)
