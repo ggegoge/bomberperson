@@ -393,12 +393,7 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       continue;
     }
 
-    if (killed_this_turn.contains(id)) {
-      dbg("[game master] player ", (int)id, " got killed this turn, new place for him");
-      Position pos = {rand() % size_x, rand() % size_y};
-      positions[id] = pos;
-      turn.second.push_back(server_messages::PlayerMoved{id, pos});
-    } else {
+    if (!killed_this_turn.contains(id)) {
       if (!maybe_cl->current_move.has_value()) {
         dbg("[gather_moves] client ", idx, " ie player ", (int)id, " has not moved");
         continue;
@@ -701,6 +696,14 @@ void RoboticServer::game_master()
       killed_this_turn = {};
       do_bombing(current_turn);
       gather_moves(current_turn);
+
+      for (PlayerId id : killed_this_turn) {
+        dbg("[game master] player ", (int)id, " got killed this turn, new place for him");
+        Position pos = {rand() % size_x, rand() % size_y};
+        positions[id] = pos;
+        current_turn.second.push_back(server_messages::PlayerMoved{id, pos});
+      }
+
       std::lock_guard<std::mutex> lk{turn0_mutex};
       // append those events to turn0
       for (const server_messages::Event& ev : current_turn.second)
