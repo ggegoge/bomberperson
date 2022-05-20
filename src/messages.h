@@ -113,9 +113,6 @@ using Game =
              std::set<Position>, std::set<server_messages::Bomb>, std::set<Position>,
              std::map<PlayerId, Score>>;
 
-// ^todo: bombs should be a list as there can be more than 1 bomb on one position
-// although does it matter to the gui?...
-
 using DisplayMessage = std::variant<Lobby, Game>;
 
 }; // namespace display_message

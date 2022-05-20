@@ -56,8 +56,6 @@ concept Iterable = requires (Seq seq)
   {seq.cend()};
 };
 
-// todo: comparing sizes instead of same_as? perhaps someone gives us an int
-// and that should be fine?
 // Changing the byte order. Numbers are serialised in the network order.
 template <typename T>
 inline constexpr T hton(T num)
@@ -184,8 +182,7 @@ public:
   }
 
   template <typename T>
-  requires std::is_empty_v<T>
-  void ser(const T&) { return; }
+  void ser(const T&) requires std::is_empty_v<T> {}
 
   // The serialisation operator proper.
   template <typename T>
@@ -318,8 +315,7 @@ public:
   }
 
   template <typename T>
-  requires std::is_empty_v<T>
-  void deser(T&) { return; }
+  void deser(T&) requires std::is_empty_v<T> {}
 
   template <typename T>
   Deserialiser& operator>>(T& item)
