@@ -1,9 +1,13 @@
-// Messages sent in our protocol and (de)serialisers for them.
-//
+// Messages sent in our protocol.
+
 // I do not use structs or classes but tuples, pairs and aliases on purpose:
 // with marshal.h you can marshal and unmarshal tuples etc without writing any
 // extra adapters whereas if structs were to be used then it would be necessary
 // to write another overloads for each one of them.
+
+// Of course this causes some problems with sensible accessing tuple fields
+// but necessary getters can always be written and c++17's structured binding
+// decomposition is our friend.
 
 // Messages are in respective namespaces to avoid overt confusion with naming.
 
@@ -11,18 +15,17 @@
 #define _MESSAGES_H_
 
 #include <cstdint>
-#include <iostream>
-#include <stdexcept>
 #include <utility>
-#include <variant>
 #include <map>
 #include <set>
 #include <tuple>
 #include <string>
 #include <vector>
+#include <variant>
 
 #include "marshal.h"
 
+// So common we do not have a namespace for them.
 using PlayerId = uint8_t;
 using BombId = uint32_t;
 using Position = std::pair<uint16_t, uint16_t>;
