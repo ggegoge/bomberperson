@@ -331,7 +331,8 @@ void RoboticClient::explosions_in_radius(std::set<Position>& explosions,
       }, game_state.state);
 
     Position pos = bombpos;
-    for (uint16_t i = 0; i < game_state.explosion_radius; ++i) {
+    // Note: <= radius as the bomb position itself is also affected.
+    for (uint16_t i = 0; i <= game_state.explosion_radius; ++i) {
       Position next = do_move(pos, d);
       explosions.insert(pos);
 
