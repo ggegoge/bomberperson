@@ -42,5 +42,5 @@ src/robots-client.o: src/robots-client.cc src/marshal.h src/readers.h src/messag
 src/robots-server.o: src/robots-server.cc src/marshal.h src/readers.h src/messages.h
 
 clean:
-	-rm -f $(CLIENT_OBJS)
-	-rm -f robots-client
+	-rm -f $(CLIENT_OBJS) $(SERV_OBJS)
+	-rm -f robots-client robots-server
