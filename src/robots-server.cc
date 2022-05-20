@@ -39,7 +39,6 @@
 namespace po = boost::program_options;
 
 using boost::asio::ip::tcp;
-using boost::asio::ip::resolver_base;
 
 using std::chrono::system_clock;
 
@@ -68,6 +67,8 @@ void dbg(Args&&... args)
 }
 
 constexpr size_t MAX_CLIENTS = 25;
+
+constexpr const char* CZUMPI = "czumpi";
 
 // Helper for std::visiting mimicking pattern matching, inspired by cppref.
 template<typename> inline constexpr bool always_false_v = false;
@@ -442,7 +443,7 @@ void RoboticServer::kill_on_position(std::set<PlayerId>& killed, Position pos)
   // now check if there are players on pos but how the hell would i do that?
   // piss and shit
   for (const auto& [id, pl_pos] : positions)
-    if (pl_pos == pos) {
+    if (pl_pos == pos && players.at(id).first != CZUMPI) {
       killed.insert(id);
       killed_this_turn.insert(id);
     }
