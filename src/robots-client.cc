@@ -335,7 +335,7 @@ void RoboticClient::explosions_in_radius(std::set<Position>& explosions,
       Position next = do_move(pos, d);
       explosions.insert(pos);
 
-      if (next == pos || blocks.contains(next))
+      if (next == pos || blocks.contains(pos))
         break;
 
       pos = next;
