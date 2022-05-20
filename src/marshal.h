@@ -56,8 +56,6 @@ concept Iterable = requires (Seq seq)
   {seq.cend()};
 };
 
-// todo: comparing sizes instead of same_as? perhaps someone gives us an int
-// and that should be fine?
 // Changing the byte order. Numbers are serialised in the network order.
 template <typename T>
 inline constexpr T hton(T num)

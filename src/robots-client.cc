@@ -50,7 +50,7 @@ constexpr bool debug = true;
 template <typename... Args>
 void dbg(Args&&... args)
 {
-  if (debug) {
+  if constexpr (debug) {
     (std::cerr << ... << args);
     std::cerr << "\n";
   }
@@ -74,13 +74,16 @@ template<typename> inline constexpr bool always_false_v = false;
 struct GameState {
   DisplayMessage state;
   std::map<BombId, server_messages::Bomb> bombs;
+
   // Set since "you only die once".
   std::set<PlayerId> killed_this_turn;
+
   // Need to keep those for proper display of explosions.
   std::set<Position> old_blocks;
-  // This bool will tell us whether to ignore the gui input or not.
-  bool observer = false;
+
+  // Whether to treat gui input as player action or as a Join request.
   bool lobby = true;
+
   // Server parameters.
   uint16_t timer;
   uint8_t players_count;
@@ -107,32 +110,33 @@ std::pair<std::string, std::string> get_addr(const std::string& addr)
   }
 }
 
-// Accessing fields of DisplayMessage tuples. This is the trade off we have:
-// tuples are incredibly easy to (un)marshal but they do not provide named fields.
+// Accessing fields of DisplayMessage tuples. This is the trade off we have
+// with choosing tuples instead of structs: tuples are incredibly easy to marshal
+// and unmarshal but they do not provide named fields hence all of the below.
 template <LobbyOrGame T>
 std::map<PlayerId, server_messages::Player>& state_get_players(T& gl)
 {
-  if constexpr(std::same_as<T, display_messages::Lobby>)
+  if constexpr (std::same_as<T, display_messages::Lobby>)
     return get<7>(gl);
-  else if constexpr(std::same_as<T, display_messages::Game>)
+  else if constexpr (std::same_as<T, display_messages::Game>)
     return get<5>(gl);
 }
 
 template <LobbyOrGame T>
 const std::map<PlayerId, server_messages::Player>& state_get_players(const T& gl)
 {
-  if constexpr(std::same_as<T, display_messages::Lobby>)
+  if constexpr (std::same_as<T, display_messages::Lobby>)
     return get<7>(gl);
-  else if constexpr(std::same_as<T, display_messages::Game>)
+  else if constexpr (std::same_as<T, display_messages::Game>)
     return get<5>(gl);
 }
 
 template <LobbyOrGame T>
 std::pair<uint16_t, uint16_t> state_get_size_x_y(const T& gl)
 {
-  if constexpr(std::same_as<T, display_messages::Lobby>)
+  if constexpr (std::same_as<T, display_messages::Lobby>)
     return {get<2>(gl), get<3>(gl)};
-  else if constexpr(std::same_as<T, display_messages::Game>)
+  else if constexpr (std::same_as<T, display_messages::Game>)
     return {get<1>(gl), get<2>(gl)};
 }
 
@@ -283,7 +287,7 @@ void RoboticClient::lobby_to_game()
 {
   using namespace display_messages;
   game_state.state = std::visit([] <typename GorL> (GorL& gl) {
-      if constexpr(std::same_as<Lobby, GorL>) {
+      if constexpr (std::same_as<Lobby, GorL>) {
         std::map<PlayerId, Score> scores;
         for (auto& [plid, _] : state_get_players(gl))
           scores.insert({plid, 0});
@@ -294,7 +298,7 @@ void RoboticClient::lobby_to_game()
         Game g{server_name, size_x, size_y, game_length,
           0, players, {}, {}, {}, {}, scores};
         return DisplayMessage{g};
-      } else if constexpr(std::same_as<Game, GorL>) {
+      } else if constexpr (std::same_as<Game, GorL>) {
         return DisplayMessage{gl};
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
@@ -306,7 +310,6 @@ void RoboticClient::gs_handler(server_messages::GameStarted& gs)
 {
   dbg("[game_handler] gs_handler");
   using namespace display_messages;
-  game_state.observer = true;
 
   std::visit([&gs] <typename GorL> (GorL& gl) {
       state_get_players(gl) = gs;
@@ -348,13 +351,13 @@ Position RoboticClient::do_move(Position pos,
       
       auto [x, y] = pos;
 
-      if constexpr(std::same_as<D, Up>) {
+      if constexpr (std::same_as<D, Up>) {
         return (y + 1 < size_y) ? Position{x, y + 1} : pos;
-      } else if constexpr(std::same_as<D, Down>) {
+      } else if constexpr (std::same_as<D, Down>) {
         return (y > 0) ? Position{x, y - 1} : pos;
-      } else if constexpr(std::same_as<D, Left>) {
+      } else if constexpr (std::same_as<D, Left>) {
         return (x > 0) ? Position{x - 1, y} : pos;
-      } else if constexpr(std::same_as<D, Right>) {
+      } else if constexpr (std::same_as<D, Right>) {
         return (x + 1 < size_x) ? Position{x + 1, y} : pos;
       } else {
         static_assert(always_false_v<D>, "Non-exhaustive pattern matching!");
@@ -370,10 +373,10 @@ void RoboticClient::apply_event(display_messages::Game& game,
   std::visit([&game, &bombs, this] <typename Ev> (const Ev& ev) {
       auto& [_1, _2, _3, _4, _5, _6, player_positions, blocks, _9, explosions, _11] = game;
 
-      if constexpr(std::same_as<BombPlaced, Ev>) {
+      if constexpr (std::same_as<BombPlaced, Ev>) {
         auto& [id, position] = ev;
         bombs.insert({id, {position, game_state.timer}});
-      } else if constexpr(std::same_as<BombExploded, Ev>) {
+      } else if constexpr (std::same_as<BombExploded, Ev>) {
         auto& [id, killed, blocks_destroyed] = ev;
         explosions_in_radius(explosions, bombs.at(id).first);
         explosions.insert(bombs.at(id).first);
@@ -386,10 +389,10 @@ void RoboticClient::apply_event(display_messages::Game& game,
           blocks.erase(pos);
           explosions.insert(pos);
         }
-      } else if constexpr(std::same_as<PlayerMoved, Ev>) {
+      } else if constexpr (std::same_as<PlayerMoved, Ev>) {
         auto& [id, position] = ev;
         player_positions[id] = position;
-      } else if constexpr(std::same_as<BlockPlaced, Ev>) {
+      } else if constexpr (std::same_as<BlockPlaced, Ev>) {
         blocks.insert(ev);
       } else {
         static_assert(always_false_v<Ev>, "Non-exhaustive pattern matching!");
@@ -432,7 +435,7 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
 
   const std::map<PlayerId, server_messages::Player>& players =
     std::visit([] <typename GorL> (const GorL& gl) {
-      if constexpr(std::same_as<Lobby, GorL> || std::same_as<Game, GorL>) {
+      if constexpr (std::same_as<Lobby, GorL> || std::same_as<Game, GorL>) {
         return state_get_players(gl);
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
@@ -447,9 +450,9 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
 
   // Generate new lobby based on what we know already.
   game_state.state = std::visit([this] <typename GorL> (GorL& gl) {
-      if constexpr(std::same_as<Lobby, GorL>) {
+      if constexpr (std::same_as<Lobby, GorL>) {
         return DisplayMessage{gl};
-      } else if constexpr(std::same_as<Game, GorL>) {
+      } else if constexpr (std::same_as<Game, GorL>) {
         auto& [server_name, size_x, size_y, game_length,
                _5, _6, _7, _8, _9, _10, _11] = gl;
 
@@ -467,10 +470,10 @@ void RoboticClient::update_game()
   using namespace display_messages;
 
   std::visit([this] <typename GorL> (GorL& gl) {
-      if constexpr(std::same_as<Lobby, GorL>) {
+      if constexpr (std::same_as<Lobby, GorL>) {
         // No bombs in the lobby.
         return;
-      } else if constexpr(std::same_as<Game, GorL>) {
+      } else if constexpr (std::same_as<Game, GorL>) {
         game_get_bombs(gl) = {};
 
         for (auto& [_, bomb] : game_state.bombs)
@@ -492,15 +495,15 @@ void RoboticClient::server_msg_handler(ServerMessage& msg)
 {
   using namespace server_messages;
   std::visit([this] <typename T> (T& x) {
-      if constexpr(std::same_as<T, Hello>)
+      if constexpr (std::same_as<T, Hello>)
         hello_handler(x);
-      else if constexpr(std::same_as<T, AcceptedPlayer>)
+      else if constexpr (std::same_as<T, AcceptedPlayer>)
         ap_handler(x);
-      else if constexpr(std::same_as<T, GameStarted>)
+      else if constexpr (std::same_as<T, GameStarted>)
         gs_handler(x);
-      else if constexpr(std::same_as<T, Turn>)
+      else if constexpr (std::same_as<T, Turn>)
         turn_handler(x);
-      else if constexpr(std::same_as<T, GameEnded>)
+      else if constexpr (std::same_as<T, GameEnded>)
         ge_handler(x);
       else
         static_assert(always_false_v<T>, "Non-exhaustive pattern matching!");
@@ -511,8 +514,8 @@ ClientMessage RoboticClient::input_to_client(InputMessage& msg)
 {
   using namespace client_messages;
   return std::visit([] <typename T> (T& x) -> ClientMessage {
-      if constexpr(std::same_as<T, PlaceBomb> || std::same_as<T, PlaceBlock> ||
-                   std::same_as<T, Move>)
+      if constexpr (std::same_as<T, PlaceBomb> || std::same_as<T, PlaceBlock> ||
+                    std::same_as<T, Move>)
         return x;
       else
         static_assert(always_false_v<T>, "Non-exhaustive pattern matching!");
@@ -573,7 +576,8 @@ void RoboticClient::game_handler()
 void RoboticClient::play()
 {
   std::jthread input_worker{[this] () { input_handler(); }};
-  std::jthread game_worker{[this] () { game_handler(); }};
+  // Why waste the main thread, game_handler can have it.
+  game_handler();
 }
 
 };  // namespace anonymous

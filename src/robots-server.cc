@@ -1,9 +1,5 @@
 // The server for the bomberperson game.
 
-// todo: add spaces after if constexpr?
-// todo: monitor all lock guards and check scopings reasonability
-// todo: no deadlocks
-// todo: main thread just waits on join, innit?
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -63,7 +59,7 @@ constexpr bool debug = true;
 template <typename... Args>
 void dbg(Args&&... args)
 {
-  if constexpr(debug) {
+  if constexpr (debug) {
     (std::cerr << ... << args);
     std::cerr << "\n";
   }
@@ -117,9 +113,6 @@ public:
     return elem;
   }
 };
-
-// todo: sep struct?????
-struct ServerParameters {};
 
 // This structure holds relevant information for a single connected client.
 struct ConnectedClient {
@@ -409,20 +402,20 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       // Pattern match the player's action.
       std::visit([this, &turn, plid] <typename Cm> (const Cm& cm) {
           auto& [_, events] = turn;
-          if constexpr(std::same_as<Cm, Join>) {
+          if constexpr (std::same_as<Cm, Join>) {
             throw ServerLogicError("Join should not be placed as current move!");
-          } else if constexpr(std::same_as<Cm, PlaceBomb>) {
+          } else if constexpr (std::same_as<Cm, PlaceBomb>) {
             // Get an id for the new bomb.
             BombId bombid = get_free_id(bombs);
             server_messages::Bomb bomb{positions.at(plid), timer};
             bombs.insert({bombid, bomb});
             server_messages::BombPlaced bp{bombid, bomb.first};
             events.push_back(bp);
-          } else if constexpr(std::same_as<Cm, PlaceBlock>) {
+          } else if constexpr (std::same_as<Cm, PlaceBlock>) {
             Position pos = positions.at(plid);
             blocks.insert(pos);
             events.push_back(server_messages::BlockPlaced{pos});
-          } else if constexpr(std::same_as<Cm, Move>) {
+          } else if constexpr (std::same_as<Cm, Move>) {
             Position pos = positions.at(plid);
             Position new_pos = do_move(pos, cm);
             if (!blocks.contains(new_pos) && pos != new_pos) {
@@ -479,13 +472,13 @@ Position RoboticServer::do_move(Position pos, client_messages::Direction dir) co
 
   return std::visit([this, pos] <typename D> (D) {
       auto [x, y] = pos;
-      if constexpr(std::same_as<D, Up>) {
+      if constexpr (std::same_as<D, Up>) {
         return (y + 1 < size_y) ? Position{x, y + 1} : pos;
-      } else if constexpr(std::same_as<D, Down>) {
+      } else if constexpr (std::same_as<D, Down>) {
         return (y > 0) ? Position{x, y - 1} : pos;
-      } else if constexpr(std::same_as<D, Left>) {
+      } else if constexpr (std::same_as<D, Left>) {
         return (x > 0) ? Position{x - 1, y} : pos;
-      } else if constexpr(std::same_as<D, Right>) {
+      } else if constexpr (std::same_as<D, Right>) {
         return (x + 1 < size_x) ? Position{x + 1, y} : pos;
       } else {
         static_assert(always_false_v<D>, "Non-exhaustive pattern matching!");
@@ -585,10 +578,10 @@ void RoboticServer::acceptor()
         continue;
 
       ++number_of_clients;
-      // todo do not need a mutex here as it is none?
+      // Do not need a mutex here as it is none (hence shouldn't be accessed).
+      // Also I am assigning in lobby state only when only client_handlers and
+      // the acceptor itself access clients vector.
       clients.at(i) = std::move(cl);
-      // todo: consider reusing threads and simply giving them a blocking queue
-      // with conn player? and they find the place in array? idk
       std::jthread th{[this, i] { client_handler(i); }};
       // We detach the client handling thread as its execution is independent.
       th.detach();
@@ -614,7 +607,7 @@ void RoboticServer::client_handler(size_t i)
       {
         std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
         std::visit([this, i, &addr] <typename Cm> (const Cm& cm) {
-            if constexpr(std::same_as<Cm, Join>) {
+            if constexpr (std::same_as<Cm, Join>) {
               if (!clients.at(i)->in_game && lobby) {
                 // Do this only when in lobby state, do not bother join handler.
                 joined.push({i, {cm, addr}});
@@ -666,11 +659,15 @@ void RoboticServer::join_handler()
     bool accepted = false;
     uint8_t id;
     {
+      // Note: here we first lock clients_mutices[i] and then we lock
+      // playing_clients_mutex and in gather_moves we do it vice versa.
+      // This is highly deadlock prone but this locking here only happens when
+      // lobby=true whereas game_master who calls gather_moves() only runs when
+      // it is !lobby therefore this should not be a problem.
+      // It is this thread that wakes game_master up so we should be safe.
       std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
       if (clients.at(i).has_value() && !clients.at(i)->in_game) {
-        // todo: this should only be set by the game master?
         clients.at(i)->in_game = true;
-        // todo: i am locking (TWICE!!) while under client mutex, check deadlockiness
         {
           std::lock_guard<std::mutex> lk{players_mutex};
           id = get_free_id(players);
@@ -708,11 +705,10 @@ void RoboticServer::game_master()
       turn_number = 0;
     }
 
-    // todo: should i wait when turnno = 0? perhaps send the turn straight away
-    dbg("[game_master] Waiting for ", turn_duration, "ms...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(turn_duration));
-
     if (turn_number > 0) {
+      dbg("[game_master] Waiting for ", turn_duration, "ms...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(turn_duration));
+
       killed_this_turn = {};
       destroyed_this_turn = {};
       do_bombing(current_turn);
@@ -732,7 +728,6 @@ void RoboticServer::game_master()
         turn0.second.push_back(ev);
     }
 
-    // todo send it to clients
     dbg("[game_master] Turn ", current_turn.first);
     dbg("[game_master] Sending ", current_turn.second.size(), " events to clients", "\n");
     send_to_all(ServerMessage{current_turn});
@@ -754,10 +749,10 @@ void RoboticServer::game_master()
 // Main server function.
 void RoboticServer::run()
 {
-  // todo: should i run one of these in the main thread?
   std::jthread gm_th{[this] { game_master(); }};
   std::jthread jh_th{[this] { join_handler(); }};
-  std::jthread acc_th{[this] { acceptor(); }};
+  // Why waste the main thread, acceptor can have it.
+  acceptor();
 }
 
 } // namespace anonymous
