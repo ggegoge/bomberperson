@@ -233,7 +233,8 @@ public:
       size_y{size_y}, io_ctx{}, endpoint(tcp::v6(), port), tcp_acceptor{io_ctx, endpoint},
       hello{name, players_count, size_x, size_y, game_len, radius, timer}, rand{seed}
   {
-    dbg("Running the server ", name, " on ", endpoint.address(), ":", endpoint.port());
+    std::cout << "Running the server \"" << name << "\" on "
+              << endpoint.address() << endpoint.port() << "\n";
   }
 
   void run();
@@ -399,7 +400,7 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
 
     if (!killed_this_turn.contains(id)) {
       if (!maybe_cl->current_move.has_value()) {
-        dbg("[gather_moves] Client ", idx, " ie player ", static_cast<int>(id),
+        dbg("[game_master] Client ", idx, " ie player ", static_cast<int>(id),
             " has not moved.");
         continue;
       }

@@ -182,12 +182,12 @@ public:
     udp::resolver udp_resolver{io_ctx};
     gui_endpoint = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
 
-    std::cerr << "Resolved adresses:\n";
+    std::cout << "Endpoints:\n";
     if (gui_endpoint.protocol() == udp::v6())
-      std::cerr << "\tgui: [" << gui_endpoint.address() << "]:"
+      std::cout << "\tgui: [" << gui_endpoint.address() << "]:"
                 << gui_endpoint.port() << "\n";
     else
-      std::cerr << "\tgui: " << gui_endpoint.address() << ":"
+      std::cout << "\tgui: " << gui_endpoint.address() << ":"
                 << gui_endpoint.port() << "\n";
 
     auto [serv_ip, serv_port] = get_addr(server_addr);
@@ -196,10 +196,10 @@ public:
       *tcp_resolver.resolve(serv_ip, serv_port, resolver_base::numeric_service);
 
     if (server_endpoint.protocol() == tcp::v6())
-      std::cerr << "\tserver: [" << server_endpoint.address() << "]:"
+      std::cout << "\tserver: [" << server_endpoint.address() << "]:"
                 << server_endpoint.port() << "\n";
     else
-      std::cerr << "\tserver: " << server_endpoint.address() << ":"
+      std::cout << "\tserver: " << server_endpoint.address() << ":"
                 << server_endpoint.port() << "\n";
 
     // Open connection to the server.
@@ -256,7 +256,7 @@ void RoboticClient::hello_handler(server_messages::Hello& h)
   using namespace display_messages;
   auto& [server_name, players_count, size_x, size_y,
          game_length, explosion_radius, bomb_timer] = h;
-  dbg("[hello_handler] Hello from ", server_name, ".");
+  dbg("[hello_handler] Hello from \"", server_name, "\".");
 
   Lobby l{server_name, players_count, size_x, size_y, game_length,
     explosion_radius, bomb_timer, {}};
