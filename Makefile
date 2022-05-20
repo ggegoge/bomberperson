@@ -12,24 +12,25 @@ SERV_OBJS = $(SERV_SRC:%.cc=src/%.o)
 
 .PHONY: all clean release debug
 
-all: robots-server release
+all: release
 
 # providing these two targets (release and debug) for user convenience
 release: CXXFLAGS += -DNDEBUG -O2
-release: robots-client
+release: robots-client robots-server
 
 debug: CXXFLAGS += -g
-debug: robots-client
+debug: robots-client robots-server
 
 # EXECUTABLES
+
+# The client
 robots-client: $(CLIENT_OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
 robots-client-static: $(CLIENT_OBJS)
 	$(CXX) $^ -o $@ -Wl,-Bstatic -lboost_program_options -Wl,-Bdynamic -lpthread
 
-# todo: always debugging for now
-robots-server: CXXFLAGS += -g
+# The server
 robots-server: $(SERV_OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
