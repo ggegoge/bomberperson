@@ -608,10 +608,13 @@ void RoboticServer::client_handler(size_t i)
         std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
         std::visit([this, i, &addr] <typename Cm> (const Cm& cm) {
             if constexpr(std::same_as<Cm, Join>) {
-              if (!clients.at(i)->in_game) {
+              if (!clients.at(i)->in_game && lobby) {
+                // do this only when in lobby state, dont bother join handler too much
                 joined.push({i, {cm, addr}});
               }
-            } else {
+            } else if (!lobby) {
+              // ^ todo this is here so that stray moves while in the lobby
+              // do not affect the game
               clients.at(i)->current_move = cm;
             }
           }, msg);
@@ -658,7 +661,8 @@ void RoboticServer::join_handler()
     uint8_t id;
     {
       std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
-      if (clients.at(i).has_value()) {
+      if (clients.at(i).has_value() && !clients.at(i)->in_game) {
+        // todo: this should only be set by the game master?
         clients.at(i)->in_game = true;
         // todo: i am locking (TWICE!!) while under client mutex, check deadlockiness
         {
@@ -722,7 +726,7 @@ void RoboticServer::game_master()
 
     // todo send it to clients
     dbg("[game_master] turn ", current_turn.first);
-    dbg("[game_master] sending ", current_turn.second.size(), " events to clients");
+    dbg("[game_master] sending ", current_turn.second.size(), " events to clients", "\n");
     send_to_all(ServerMessage{current_turn});
     for (PlayerId id : killed_this_turn) {
       ++scores.at(id);
@@ -733,7 +737,6 @@ void RoboticServer::game_master()
     // in game to false.
     if (turn_number == game_length)
       end_game();
-
   }
 }
 
