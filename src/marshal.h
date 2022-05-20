@@ -56,14 +56,6 @@ concept Iterable = requires (Seq seq)
   {seq.cend()};
 };
 
-// Can only unmarshal enums which have a dummy last value that helps check its size.
-template <typename T>
-concept UnmarshallableEnum = requires
-{
-  std::is_enum_v<T>;
-  T::BOLLOCKS;
-};
-
 // todo: comparing sizes instead of same_as? perhaps someone gives us an int
 // and that should be fine?
 // Changing the byte order. Numbers are serialised in the network order.
@@ -242,18 +234,6 @@ public:
       std::string err = "Failed to unmarshal a number: ";
       throw UnmarshallingError{err + e.what()};
     }
-  }
-
-  template <UnmarshallableEnum T>
-  void deser(T& item)
-  {
-    uint8_t kind;
-    deser(kind);
-
-    if (kind >= static_cast<uint8_t>(T::BOLLOCKS))
-      throw UnmarshallingError{"Byte does not match the enum!"};
-
-    item = static_cast<T>(kind);
   }
 
   void deser(std::string& str)

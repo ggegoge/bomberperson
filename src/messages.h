@@ -31,11 +31,14 @@ using Score = uint32_t;
 namespace client_messages
 {
 
-// Last case so that this is an UnmarshallableEnum (see marshal.h).
-// todo: switch to variant of empty structs?
-enum class Direction {
-  UP, RIGHT, DOWN, LEFT, BOLLOCKS
-};
+// Consistently using std::variant for all enum like messages essentially. Hence
+// I need those empty structs for type safety.
+struct Up {};
+struct Right {};
+struct Down {};
+struct Left {};
+
+using Direction = std::variant<Up, Right, Down, Left>;
 
 // Join(name)
 using Join = std::string;

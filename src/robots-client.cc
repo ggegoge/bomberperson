@@ -316,9 +316,8 @@ void RoboticClient::gs_handler(server_messages::GameStarted& gs)
 void RoboticClient::explosions_in_radius(std::set<Position>& explosions,
                                          Position bombpos) const
 {
-  client_messages::Direction dirs[] = {client_messages::Direction::UP,
-    client_messages::Direction::DOWN, client_messages::Direction::LEFT,
-    client_messages::Direction::RIGHT};
+  client_messages::Direction dirs[] = {client_messages::Up{},
+    client_messages::Down{}, client_messages::Left{}, client_messages::Right{}};
 
   // find those who have got their lives ended
   for (client_messages::Direction d : dirs) {
@@ -348,28 +347,25 @@ Position RoboticClient::do_move(Position pos,
                                 client_messages::Direction dir) const
 {
   using namespace client_messages;
-  auto [size_x, size_y] = std::visit([] <typename T> (const T& gl) {
-      return state_get_size_x_y(gl);
-    }, game_state.state);
+  return std::visit([this, pos] <typename D> (D) {
+      auto [size_x, size_y] = std::visit([] <typename T> (const T& gl) {
+          return state_get_size_x_y(gl);
+        }, game_state.state);
+      
+      auto [x, y] = pos;
 
-  auto [x, y] = pos;
-
-  switch (dir) {
-  case Direction::UP:
-    return (y + 1 < size_y) ? Position{x, y + 1} : pos;
-  case Direction::DOWN:
-    return (y > 0) ? Position{x, y - 1} : pos;
-
-  case Direction::LEFT:
-    return (x > 0) ? Position{x - 1, y} : pos;
-
-  case Direction::RIGHT:
-    return (x + 1 < size_x) ? Position{x + 1, y} : pos;
-
-  case Direction::BOLLOCKS:
-  default:
-    return pos;
-  }
+      if constexpr(std::same_as<D, Up>) {
+        return (y + 1 < size_y) ? Position{x, y + 1} : pos;
+      } else if constexpr(std::same_as<D, Down>) {
+        return (y > 0) ? Position{x, y - 1} : pos;
+      } else if constexpr(std::same_as<D, Left>) {
+        return (x > 0) ? Position{x - 1, y} : pos;
+      } else if constexpr(std::same_as<D, Right>) {
+        return (x + 1 < size_x) ? Position{x + 1, y} : pos;
+      } else {
+        static_assert(always_false_v<D>, "Non-exhaustive pattern matching!");
+      }
+    }, dir);
 }
 
 void RoboticClient::apply_event(display_messages::Game& game,
