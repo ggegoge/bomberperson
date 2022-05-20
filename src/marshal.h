@@ -1,11 +1,11 @@
-// Marshalling and unmarshalling of data.
+// Marshalling and unmarshalling of data aka (de)serialisation.
+// These two terms are used quite freely here.
 
 // It serialises data types according to simple protocol. Here only basic
 // serialisation is handled but this serves as an extensible layer of
 // abstraction (aka marshalling framework) that can still be used with other
-// complex structures. It relies heavily on overloading the >> and << operators
-// so if you provide your overloaded versions of those for different types then
-// this can still work for them. You can see it done in messages.h.
+// complex structures: just write other overloads for stream operators that
+// would be struct specific (but perhaps stick to tuples if you can).
 
 #ifndef _MARSHAL_H_
 #define _MARSHAL_H_
@@ -35,7 +35,7 @@
 #include <cstddef>
 #include <cstdint>
 
-// This concept describes a class from which the deserialiser will read bytes.
+// This concept describes a class from which the deserialiser can read bytes.
 // It should be possible to extract a chosen number of those depending on what
 // do you want to read and it should tell you how many bytes are there to be
 // read at any given time.
@@ -46,8 +46,8 @@ concept Readable = requires (T x, size_t nbytes)
   {x.avalaible()} -> std::same_as<size_t>;
 };
 
-// This concepts ensures that type Seq represents an iterable sized container.
-// The constraints are not overly strong as I wanted to keep that simple.
+// This concepts ensures that type Seq represents an iterable, sized container.
+// The constraints are not overly strong as I wanted to keep it simple.
 template <typename Seq>
 concept Iterable = requires (Seq seq)
 {
@@ -83,7 +83,7 @@ inline constexpr T ntoh(T num)
     return num;
 }
 
-// Unmarshalling may fail whereas Marshalling is our protocol infalliable.
+// Unmarshalling may fail whereas marshalling is our protocol infalliable.
 class UnmarshallingError : public std::runtime_error {
 public:
   UnmarshallingError()
@@ -165,6 +165,7 @@ public:
     *this << pair.first << pair.second;
   }
 
+  // This is why it is easier to use a tuple than a struct.
   template <typename... Ts>
   void ser(const std::tuple<Ts...>& tuple)
   {
@@ -181,6 +182,7 @@ public:
       }, var);
   }
 
+  // Empty structures are useful for variants hence we allow those.
   template <typename T>
   void ser(const T&) requires std::is_empty_v<T> {}
 
@@ -193,11 +195,13 @@ public:
   }
 };
 
+// Data deserialisation is just serialisation but conversly.
 template <Readable R>
 class Deserialiser {
   R r;
 
 public:
+  Deserialiser() : r{} {}
   Deserialiser(const R& r) : r{r} {}
   Deserialiser(R&& r) : r{std::move(r)} {}
 
@@ -333,7 +337,7 @@ private:
 	if constexpr(I >= std::variant_size_v<Var>) {
       throw UnmarshallingError{"Index does not match the variant!"};
 	} else {
-      // this changes runtime index into a compile time index, brilliant
+      // This changes runtime index into a compile time index, brilliant.
       return index == 0
         ? Var{std::in_place_index<I>}
         : variant_from_index<Var, I + 1>(index - 1);
