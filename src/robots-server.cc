@@ -221,6 +221,7 @@ class RoboticServer {
   std::map<BombId, server_messages::Bomb> bombs;
   std::map<PlayerId, Score> scores;
   std::set<Position> blocks;
+  std::set<Position> destroyed_this_turn;
   std::vector<BombId> explosions;
 
   // This indicates whether we are currently in lobby state or not
@@ -381,10 +382,6 @@ void RoboticServer::do_bombing(server_messages::Turn& turn)
       for (client_messages::Direction d : dirs)
         explode_in_radius(killed, destroyed, bomb_pos, d);
 
-      // Erase destroyed blocks.
-      for (Position pos : destroyed)
-        blocks.erase(pos);
-
       events.push_back(server_messages::BombExploded{bombid, killed, destroyed});
     }
   }
@@ -467,6 +464,7 @@ void RoboticServer::explode_in_radius(std::set<PlayerId>& killed,
 
     if (blocks.contains(pos)) {
       destroyed.insert(pos);
+      destroyed_this_turn.insert(pos);
       return;
     }
 
@@ -718,6 +716,7 @@ void RoboticServer::game_master()
 
     if (turn_number > 0) {
       killed_this_turn = {};
+      destroyed_this_turn = {};
       do_bombing(current_turn);
       gather_moves(current_turn);
 
@@ -739,9 +738,14 @@ void RoboticServer::game_master()
     dbg("[game_master] Turn ", current_turn.first);
     dbg("[game_master] Sending ", current_turn.second.size(), " events to clients", "\n");
     send_to_all(ServerMessage{current_turn});
+
     for (PlayerId id : killed_this_turn) {
       ++scores.at(id);
     }
+
+    // Erase blocks that got destroyed.
+    for (Position pos : destroyed_this_turn)
+      blocks.erase(pos);
 
     ++turn_number;
     if (turn_number == game_len)
