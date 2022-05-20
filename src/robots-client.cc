@@ -76,6 +76,8 @@ struct GameState {
   std::map<BombId, server_messages::Bomb> bombs;
   // Set since "you only die once".
   std::set<PlayerId> killed_this_turn;
+  // Need to keep those for proper display of explosions.
+  std::set<Position> old_blocks;
   // This bool will tell us whether to ignore the gui input or not.
   bool observer = false;
   bool lobby = true;
@@ -321,21 +323,13 @@ void RoboticClient::explosions_in_radius(std::set<Position>& explosions,
 
   // find those who have got their lives ended
   for (client_messages::Direction d : dirs) {
-    const std::set<Position>& blocks =
-      std::visit([] <typename T> (const T& gl) -> const std::set<Position>& {
-        if constexpr(std::same_as<T, display_messages::Game>)
-          return game_get_blocks(gl);
-        else
-          throw ClientError{"Accessing game data while in lobby!"};
-      }, game_state.state);
-
     Position pos = bombpos;
     // Note: <= radius as the bomb position itself is also affected.
     for (uint16_t i = 0; i <= game_state.explosion_radius; ++i) {
       Position next = do_move(pos, d);
       explosions.insert(pos);
 
-      if (next == pos || blocks.contains(pos))
+      if (next == pos || game_state.old_blocks.contains(pos))
         break;
 
       pos = next;
@@ -413,6 +407,7 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
 
   game_get_turn(current_game) = turnno;
   game_get_explosions(current_game) = {};
+  game_state.old_blocks = game_get_blocks(current_game);
 
   for (const server_messages::Event& ev : events) {
     apply_event(current_game, game_state.bombs, ev);
@@ -433,6 +428,7 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
   // The lobby flag gets concurrently modified but we are fine with that.
   game_state.lobby = true;
   game_state.bombs = {};
+  game_state.old_blocks = {};
 
   const std::map<PlayerId, server_messages::Player>& players =
     std::visit([] <typename GorL> (const GorL& gl) {
