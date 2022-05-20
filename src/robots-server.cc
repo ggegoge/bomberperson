@@ -191,6 +191,7 @@ class RoboticServer {
   std::mutex game_master_mutex;
   // for hailer and joiner
   std::mutex players_mutex;
+  std::mutex playing_clients_mutex;
   std::mutex turn0_mutex;
   // waiting for players to join
   std::condition_variable for_game;
@@ -617,11 +618,14 @@ void RoboticServer::client_handler(size_t i)
       // upon disconnection this thread says au revoir
       dbg("[client_handler] something bad happened, au revoir: ", e.what());
       dbg("[client_handler] disconnecting this client then");
-      std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
-      // todo playing clients is safe used like that?
-      // guess so, this wont be accessed until this conn cl is none?
-      playing_clients.erase(clients.at(i)->id);
-      clients.at(i) = {};
+      {
+        std::lock_guard<std::mutex> lk{playing_clients_mutex};
+        playing_clients.erase(clients.at(i)->id);
+      }
+      {
+        std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
+        clients.at(i) = {};
+      }
       --number_of_clients;
       for_places.notify_all();
       return;
@@ -648,18 +652,23 @@ void RoboticServer::join_handler()
     if (!lobby)
       continue;
 
-    uint8_t id = get_free_id(players);
     bool accepted = false;
+    uint8_t id;
     {
       std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
       if (clients.at(i).has_value()) {
-        clients.at(i)->id = id;
         clients.at(i)->in_game = true;
+        // todo: i am locking (TWICE!!) while under client mutex, check deadlockiness
         {
           std::lock_guard<std::mutex> lk{players_mutex};
+          id = get_free_id(players);
           players.insert({id, player});
         }
-        playing_clients[id] = i;
+        {
+          std::lock_guard<std::mutex> lk{playing_clients_mutex};
+          playing_clients[id] = i;
+        }
+        clients.at(i)->id = id;
         dbg("[join_handler] accepting him, giving him id ", (int)id);
         accepted = true;
       }
@@ -691,7 +700,6 @@ void RoboticServer::game_master()
     dbg("[game_master] going to sleep for ", turn_duration);
     std::this_thread::sleep_for(std::chrono::milliseconds(turn_duration));
 
-    // todo input from playing clients
     if (turn_number > 0) {
       killed_this_turn = {};
       do_bombing(current_turn);
