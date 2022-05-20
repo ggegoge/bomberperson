@@ -8,6 +8,7 @@
 #include <boost/program_options.hpp>
 #include <boost/program_options/errors.hpp>
 #include <map>
+#include <set>
 #include <thread>
 #include <tuple>
 #include <type_traits>
@@ -123,10 +124,23 @@ const std::map<PlayerId, server_messages::Player>& state_get_players(const T& gl
     return get<5>(gl);
 }
 
+template <LobbyOrGame T>
+std::pair<uint16_t, uint16_t> state_get_size_x_y(const T& gl)
+{
+  if constexpr(std::same_as<T, display_messages::Lobby>)
+    return {get<2>(gl), get<3>(gl)};
+  else if constexpr(std::same_as<T, display_messages::Game>)
+    return {get<1>(gl), get<2>(gl)};
+}
 
 uint16_t& game_get_turn(display_messages::Game& game)
 {
   return get<4>(game);
+}
+
+const std::set<Position>& game_get_blocks(const display_messages::Game& game)
+{
+  return get<7>(game);
 }
 
 std::set<server_messages::Bomb>& game_get_bombs(display_messages::Game& game)
@@ -229,6 +243,10 @@ private:
   void gs_handler(server_messages::GameStarted& gs);
   void turn_handler(server_messages::Turn& turn);
   void ge_handler(server_messages::GameEnded& ge);
+
+  // for explosions
+  Position do_move(Position pos, client_messages::Direction dir) const;
+  void explosions_in_radius(std::set<Position>& explosions, Position pos) const;
 };
 
 void RoboticClient::hello_handler(server_messages::Hello& h)
@@ -295,6 +313,64 @@ void RoboticClient::gs_handler(server_messages::GameStarted& gs)
   lobby_to_game();
 }
 
+void RoboticClient::explosions_in_radius(std::set<Position>& explosions,
+                                         Position bombpos) const
+{
+  client_messages::Direction dirs[] = {client_messages::Direction::UP,
+    client_messages::Direction::DOWN, client_messages::Direction::LEFT,
+    client_messages::Direction::RIGHT};
+
+  // find those who have got their lives ended
+  for (client_messages::Direction d : dirs) {
+    const std::set<Position>& blocks =
+      std::visit([] <typename T> (const T& gl) -> const std::set<Position>& {
+        if constexpr(std::same_as<T, display_messages::Game>)
+          return game_get_blocks(gl);
+        else
+          throw ClientError{"Accessing game data in lobby!"};
+      }, game_state.state);
+
+    Position pos = bombpos;
+    for (uint16_t i = 0; i < game_state.explosion_radius; ++i) {
+      Position next = do_move(pos, d);
+      explosions.insert(pos);
+
+      if (next == pos || blocks.contains(next))
+        break;
+
+      pos = next;
+    }
+  }
+}
+
+Position RoboticClient::do_move(Position pos,
+                                client_messages::Direction dir) const
+{
+  using namespace client_messages;
+  auto [size_x, size_y] = std::visit([] <typename T> (const T& gl) {
+      return state_get_size_x_y(gl);
+    }, game_state.state);
+
+  auto [x, y] = pos;
+
+  switch (dir) {
+  case Direction::UP:
+    return (y + 1 < size_y) ? Position{x, y + 1} : pos;
+  case Direction::DOWN:
+    return (y > 0) ? Position{x, y - 1} : pos;
+
+  case Direction::LEFT:
+    return (x > 0) ? Position{x - 1, y} : pos;
+
+  case Direction::RIGHT:
+    return (x + 1 < size_x) ? Position{x + 1, y} : pos;
+
+  case Direction::BOLLOCKS:
+  default:
+    return pos;
+  }
+}
+
 void RoboticClient::apply_event(display_messages::Game& game,
                                 std::map<BombId, server_messages::Bomb>& bombs,
                                 const server_messages::Event& event)
@@ -308,14 +384,17 @@ void RoboticClient::apply_event(display_messages::Game& game,
         bombs.insert({id, {position, game_state.timer}});
       } else if constexpr(std::same_as<BombExploded, Ev>) {
         auto& [id, killed, blocks_destroyed] = ev;
+        explosions_in_radius(explosions, bombs.at(id).first);
         explosions.insert(bombs.at(id).first);
         bombs.erase(id);
 
         for (PlayerId plid : killed)
           game_state.killed_this_turn.insert(plid);
 
-        for (Position pos : blocks_destroyed)
+        for (Position pos : blocks_destroyed) {
           blocks.erase(pos);
+          explosions.insert(pos);
+        }
       } else if constexpr(std::same_as<PlayerMoved, Ev>) {
         auto& [id, position] = ev;
         player_positions[id] = position;
