@@ -422,6 +422,10 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
     apply_event(current_game, game_state.bombs, ev);
   }
 
+  // todo: do not send explosions if turnno == 0?
+  if (turnno == 0)
+    game_get_explosions(current_game) = {};
+
   // upon each turn the bombs get their timers reduced.
   for (auto& [_, bomb] : game_state.bombs)
     --bomb.second;

@@ -32,6 +32,7 @@ namespace client_messages
 {
 
 // Last case so that this is an UnmarshallableEnum (see marshal.h).
+// todo: switch to variant of empty structs?
 enum class Direction {
   UP, RIGHT, DOWN, LEFT, BOLLOCKS
 };

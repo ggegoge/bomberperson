@@ -1,5 +1,10 @@
 // The server for the bomberperson game.
 
+// todo many unneeded things all around
+// todo: add spaces after if constexpr?
+// todo: monitor all lock guards and check scopings reasonability
+// todo: no deadlocks
+// todo: main thread just waits on join, innit?
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/resolver_base.hpp>
@@ -16,7 +21,6 @@
 #include <map>
 #include <mutex>
 #include <optional>
-#include <semaphore>
 #include <set>
 #include <thread>
 #include <atomic>
@@ -39,7 +43,6 @@
 namespace po = boost::program_options;
 
 using boost::asio::ip::tcp;
-using boost::asio::ip::resolver_base;
 
 using std::chrono::system_clock;
 
@@ -61,7 +64,7 @@ constexpr bool debug = true;
 template <typename... Args>
 void dbg(Args&&... args)
 {
-  if (debug) {
+  if constexpr(debug) {
     (std::cerr << ... << args);
     std::cerr << "\n";
   }
@@ -186,7 +189,6 @@ class RoboticServer {
 
   // threading
   // todo: many of those arent needed, are they
-  // std::counting_semaphore<MAX_CLIENTS> clients_sem{MAX_CLIENTS};
   std::mutex acceptor_mutex;
   std::mutex game_master_mutex;
   // for hailer and joiner
@@ -302,8 +304,11 @@ void RoboticServer::hail(tcp::socket& client)
     }
     ser << ServerMessage{gs};
     try_send_bytes(ser.drain_bytes(), client);
-    std::lock_guard<std::mutex> lk{turn0_mutex};
-    ser << ServerMessage{turn0};
+    {
+      std::lock_guard<std::mutex> lk{turn0_mutex};
+      ser << ServerMessage{turn0};
+      dbg("[acceptor] sending turn0 with ", turn0.second.size(), " events");
+    }
     send_bytes(ser.drain_bytes(), client);
   } else {
     dbg("[acceptor] sending player list");
