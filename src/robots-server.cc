@@ -287,14 +287,14 @@ void RoboticServer::hail(tcp::socket& client)
 {
   dbg("[acceptor] haling new client");
   const auto& [hname, hpc, hx, hy, hgl, hr, ht] = hello;
-  dbg("[acceptor] Hello{", hname, " ", (int)hpc, " ", hx, " ", hy,
-      " ", hgl, " ", hr, " ", ht, "}");
+  dbg("[acceptor] Hello{\"", hname, "\"", ", ", (int)hpc, ", ", hx, ", ", hy,
+      ", ", hgl, ", ", hr, ", ", ht, "}");
   Serialiser ser;
   ser << ServerMessage{hello};
   send_bytes(ser.drain_bytes(), client);
 
   if (!lobby) {
-    dbg("[acceptor] he laint in-he, game already on");
+    dbg("[acceptor] client late innit, sending game started");
     server_messages::GameStarted gs;
     {
       std::lock_guard<std::mutex> lk{players_mutex};
@@ -306,7 +306,7 @@ void RoboticServer::hail(tcp::socket& client)
     ser << ServerMessage{turn0};
     send_bytes(ser.drain_bytes(), client);
   } else {
-    dbg("[acceptor] he just lobbyin");
+    dbg("[acceptor] sending player list");
     std::lock_guard<std::mutex> lk{players_mutex};
     for (const auto& [plid, player] : players) {
       server_messages::AcceptedPlayer ap{plid, player};
@@ -380,6 +380,7 @@ void RoboticServer::do_bombing(server_messages::Turn& turn)
 
 void RoboticServer::gather_moves(server_messages::Turn& turn)
 {
+  std::lock_guard<std::mutex> lk{playing_clients_mutex};
   for (const auto& [id, idx] : playing_clients) {
     std::lock_guard<std::mutex> lk{clients_mutices.at(idx)};
     std::optional<ConnectedClient>& maybe_cl = clients.at(idx);
@@ -404,7 +405,6 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       PlayerId plid = id;
       const ClientMessage& cmsg = maybe_cl->current_move.value();
       std::visit([this, &turn, plid] <typename Cm> (const Cm& cm) {
-          dbg("seeing a client msg\n");
           auto& [_, events] = turn;
           if constexpr(std::same_as<Cm, Join>) {
             throw ServerLogicError("Join should not be placed as current move!");
@@ -420,7 +420,6 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
             blocks.insert(pos);
             events.push_back(server_messages::BlockPlaced{pos});
           } else if constexpr(std::same_as<Cm, Move>) {
-            dbg("[game_master] he mooved..");
             Position pos = positions.at(plid);
             Position new_pos = do_move(pos, cm);
             if (!blocks.contains(new_pos) && pos != new_pos) {
@@ -593,7 +592,12 @@ void RoboticServer::acceptor()
 
 void RoboticServer::client_handler(size_t i)
 {
-  dbg("[client_handler] hello, im handling client ", i);
+  std::string addr;
+  {
+    std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
+    addr = address_from_sock(clients.at(i)->sock);
+  }
+  dbg("[client_handler] hello, im handling client ", i, "@", addr);
   using namespace client_messages;
   Deserialiser<ReaderTCP> deser{clients.at(i)->sock};
   for (;;) {
@@ -602,11 +606,9 @@ void RoboticServer::client_handler(size_t i)
       deser >> msg;
       {
         std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
-        std::visit([this, i] <typename Cm> (const Cm& cm) {
+        std::visit([this, i, &addr] <typename Cm> (const Cm& cm) {
             if constexpr(std::same_as<Cm, Join>) {
               if (!clients.at(i)->in_game) {
-                dbg("[client_handler] our new mate wants to join, very well");
-                std::string addr = address_from_sock(clients.at(i)->sock);
                 joined.push({i, {cm, addr}});
               }
             } else {
@@ -617,7 +619,7 @@ void RoboticServer::client_handler(size_t i)
     } catch (std::exception& e) {
       // upon disconnection this thread says au revoir
       dbg("[client_handler] something bad happened, au revoir: ", e.what());
-      dbg("[client_handler] disconnecting this client then");
+      dbg("[client_handler] disconnecting client ", addr);
       {
         std::lock_guard<std::mutex> lk{playing_clients_mutex};
         playing_clients.erase(clients.at(i)->id);
@@ -719,6 +721,8 @@ void RoboticServer::game_master()
     }
 
     // todo send it to clients
+    dbg("[game_master] turn ", current_turn.first);
+    dbg("[game_master] sending ", current_turn.second.size(), " events to clients");
     send_to_all(ServerMessage{current_turn});
     for (PlayerId id : killed_this_turn) {
       ++scores.at(id);
@@ -736,6 +740,7 @@ void RoboticServer::game_master()
 // Main server function.
 void RoboticServer::run()
 {
+  // todo: should i run one of these in the main thread?
   std::jthread gm_th{[this] { game_master(); }};
   std::jthread jh_th{[this] { join_handler(); }};
   std::jthread acc_th{[this] { acceptor(); }};
