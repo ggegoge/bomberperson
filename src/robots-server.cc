@@ -453,7 +453,8 @@ void RoboticServer::explode_in_radius(std::set<PlayerId>& killed,
                                       std::set<Position>& destroyed,
                                       Position pos, client_messages::Direction dir)
 {
-  for (uint16_t i = 0; i < radius; ++i) {
+  // Note: <= radius as the bomb position itself is also affected.
+  for (uint16_t i = 0; i <= radius; ++i) {
     Position next = do_move(pos, dir);
     kill_on_position(killed, pos);
 
