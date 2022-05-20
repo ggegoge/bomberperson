@@ -110,13 +110,6 @@ std::pair<std::string, std::string> get_addr(const std::string& addr)
   }
 }
 
-// Utility for board size.
-template <LobbyOrGame T>
-std::pair<uint16_t, uint16_t> state_get_size_x_y(const T& gl)
-{
-  return {gl.size_x, gl.size_y};
-}
-
 // Main class representing the client.
 class RoboticClient {
   boost::asio::io_context io_ctx;
@@ -134,13 +127,14 @@ public:
   RoboticClient(const std::string& name, uint16_t port,
                 const std::string& server_addr, const std::string& gui_addr)
     : name{name}, server_socket{io_ctx}, gui_socket{io_ctx, udp::endpoint{udp::v6(), port}},
-      gui_endpoint{}, server_endpoint{}, server_deser{server_socket}, gui_deser{{}}
+      gui_endpoint{}, server_endpoint{}, server_deser{server_socket}, gui_deser{}
   {
     auto [gui_ip, gui_port] = get_addr(gui_addr);
     udp::resolver udp_resolver{io_ctx};
     gui_endpoint = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
 
-    std::cout << "Endpoints:\n";
+    std::cout << "Client \"" << name << "\" communicating with endpoints:\n";
+
     if (gui_endpoint.protocol() == udp::v6())
       std::cout << "\tgui: [" << gui_endpoint.address() << "]:"
                 << gui_endpoint.port() << "\n";
@@ -297,8 +291,9 @@ Position RoboticClient::do_move(Position pos,
 {
   using namespace client_messages;
   return std::visit([this, pos] <typename D> (D) {
-      auto [size_x, size_y] = std::visit([] <typename T> (const T& gl) {
-          return state_get_size_x_y(gl);
+      auto [size_x, size_y] =
+        std::visit([] <typename T> (const T& gl) -> std::pair<uint16_t, uint16_t> {
+            return {gl.size_x, gl.size_y};
         }, game_state.state);
       
       auto [x, y] = pos;
@@ -555,7 +550,7 @@ int main(int argc, char* argv[])
     po::store(po::command_line_parser(argc, argv).
               options(desc).run(), vm);
 
-    std::cout << "\t\tBOMBERPERSON\n\n";
+    std::cout << "\t\tBOMBERPERSON\n";
 
     if (vm.count("help")) {
       std::cout << "Usage: " << argv[0] <<  " [flags]\n";
@@ -565,13 +560,6 @@ int main(int argc, char* argv[])
 
     // Notify about missing options only after printing help.
     po::notify(vm);
-
-    std::cout << "Selected options:\n"
-         << "\tgui-address: " << gui_addr << "\n"
-         << "\tplayer-name: " << player_name << "\n"
-         << "\tserver-address: " << server_addr << "\n"
-         << "\tport: " << portnum << "\n"
-         << "Running the client with these.\n\n";
 
     RoboticClient client{player_name, portnum, server_addr, gui_addr};
     client.play();

@@ -592,13 +592,10 @@ void RoboticServer::acceptor()
 
 void RoboticServer::client_handler(size_t i)
 {
-  std::string addr;
-  {
-    std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
-    addr = address_from_sock(clients.at(i)->sock);
-  }
-  dbg("[client_handler] Handling client ", i, " from ", addr);
   using namespace client_messages;
+  // Can access sock with no mutex as no one else touches it apart from writing.
+  std::string addr = address_from_sock(clients.at(i)->sock);
+  dbg("[client_handler] Handling client ", i, " from ", addr);
   Deserialiser<ReaderTCP> deser{clients.at(i)->sock};
   for (;;) {
     try {

@@ -201,6 +201,7 @@ class Deserialiser {
   R r;
 
 public:
+  Deserialiser() : r{} {}
   Deserialiser(const R& r) : r{r} {}
   Deserialiser(R&& r) : r{std::move(r)} {}
 
