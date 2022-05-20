@@ -264,8 +264,8 @@ private:
   void do_bombing(server_messages::Turn& turn);
 
   // funcs: find_neighbouring and find_in_radius(pos, direction) -> players
-  void killed_in_radius(std::set<PlayerId>& killed, Position pos,
-                        client_messages::Direction dir);
+  void explode_in_radius(std::set<PlayerId>& killed, std::set<Position>& destroyed,
+                        Position pos, client_messages::Direction dir);
 
   void kill_on_position(std::set<PlayerId>& killed, Position pos);
 
@@ -366,27 +366,12 @@ void RoboticServer::do_bombing(server_messages::Turn& turn)
 
       // find those who have got their lives ended
       for (client_messages::Direction d : dirs) {
-        killed_in_radius(killed, bomb_pos, d);
+        explode_in_radius(killed, destroyed, bomb_pos, d);
       }
 
-      // todo prettify this
-      // find destroyed blocks if there are any...
-      auto it = blocks.find(bomb_pos);
-      if (it != blocks.end()) {
-        destroyed.insert(bomb_pos);
-        blocks.erase(it);
-        kill_on_position(killed, bomb_pos);
-      }
+      for (Position pos : destroyed)
+        blocks.erase(pos);
 
-      for (client_messages::Direction d : dirs) {
-        Position neigh = do_move(bomb_pos, d);
-        it = blocks.find(neigh);
-        if (it != blocks.end()) {
-          destroyed.insert(neigh);
-          blocks.erase(it);
-          kill_on_position(killed, neigh);
-        }
-      }
       events.push_back(server_messages::BombExploded{bombid, killed, destroyed});
     }
   }
@@ -468,13 +453,20 @@ void RoboticServer::kill_on_position(std::set<PlayerId>& killed, Position pos)
     }
 }
 
-void RoboticServer::killed_in_radius(std::set<PlayerId>& killed, Position pos,
-                                     client_messages::Direction dir)
+void RoboticServer::explode_in_radius(std::set<PlayerId>& killed,
+                                      std::set<Position>& destroyed,
+                                      Position pos, client_messages::Direction dir)
 {
   for (uint16_t i = 0; i < radius; ++i) {
     Position next = do_move(pos, dir);
     kill_on_position(killed, pos);
-    if (next == pos || blocks.contains(next))
+
+    if (blocks.contains(pos)) {
+      destroyed.insert(pos);
+      return;
+    }
+
+    if (next == pos)
       return;
 
     pos = next;
@@ -629,8 +621,11 @@ void RoboticServer::client_handler(size_t i)
     } catch (std::exception& e) {
       // upon disconnection this thread says au revoir
       dbg("[client_handler] something bad happened, au revoir: ", e.what());
-      dbg("[client_handler] disconecting this client then");
+      dbg("[client_handler] disconnecting this client then");
       std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
+      // todo playing clients is safe used like that?
+      // guess so, this wont be accessed until this conn cl is none?
+      playing_clients.erase(clients.at(i)->id);
       clients.at(i) = {};
       --number_of_clients;
       for_places.notify_all();
@@ -669,7 +664,7 @@ void RoboticServer::join_handler()
           std::lock_guard<std::mutex> lk{players_mutex};
           players.insert({id, player});
         }
-        playing_clients.insert({id, i});
+        playing_clients[id] = i;
         dbg("[join_handler] accepting him, giving him id ", (int)id);
         accepted = true;
       }
