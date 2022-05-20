@@ -110,59 +110,11 @@ std::pair<std::string, std::string> get_addr(const std::string& addr)
   }
 }
 
-// Accessing fields of DisplayMessage tuples. This is the trade off we have
-// with choosing tuples instead of structs: tuples are incredibly easy to marshal
-// and unmarshal but they do not provide named fields hence all of the below.
-template <LobbyOrGame T>
-std::map<PlayerId, server_messages::Player>& state_get_players(T& gl)
-{
-  if constexpr (std::same_as<T, display_messages::Lobby>)
-    return get<7>(gl);
-  else if constexpr (std::same_as<T, display_messages::Game>)
-    return get<5>(gl);
-}
-
-template <LobbyOrGame T>
-const std::map<PlayerId, server_messages::Player>& state_get_players(const T& gl)
-{
-  if constexpr (std::same_as<T, display_messages::Lobby>)
-    return get<7>(gl);
-  else if constexpr (std::same_as<T, display_messages::Game>)
-    return get<5>(gl);
-}
-
+// Utility for board size.
 template <LobbyOrGame T>
 std::pair<uint16_t, uint16_t> state_get_size_x_y(const T& gl)
 {
-  if constexpr (std::same_as<T, display_messages::Lobby>)
-    return {get<2>(gl), get<3>(gl)};
-  else if constexpr (std::same_as<T, display_messages::Game>)
-    return {get<1>(gl), get<2>(gl)};
-}
-
-uint16_t& game_get_turn(display_messages::Game& game)
-{
-  return get<4>(game);
-}
-
-const std::set<Position>& game_get_blocks(const display_messages::Game& game)
-{
-  return get<7>(game);
-}
-
-std::set<server_messages::Bomb>& game_get_bombs(display_messages::Game& game)
-{
-  return get<8>(game);
-}
-
-std::map<PlayerId, Score>& game_get_scores(display_messages::Game& game)
-{
-  return get<10>(game);
-}
-
-std::set<Position>& game_get_explosions(display_messages::Game& game)
-{
-  return get<9>(game);
+  return {gl.size_x, gl.size_y};
 }
 
 // Main class representing the client.
@@ -279,7 +231,7 @@ void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
   std::visit([&ap] <typename GorL> (GorL& gl) {
       auto& [id, player] = ap;
       dbg("[ap_handler]: new player ", player.first, "@", player.second);
-      state_get_players(gl).insert({id, player});
+      gl.players.insert({id, player});
     }, game_state.state);
 }
 
@@ -289,7 +241,7 @@ void RoboticClient::lobby_to_game()
   game_state.state = std::visit([] <typename GorL> (GorL& gl) {
       if constexpr (std::same_as<Lobby, GorL>) {
         std::map<PlayerId, Score> scores;
-        for (auto& [plid, _] : state_get_players(gl))
+        for (auto& [plid, _] : gl.players)
           scores.insert({plid, 0});
 
         auto& [server_name, players_count, size_x, size_y,
@@ -312,7 +264,7 @@ void RoboticClient::gs_handler(server_messages::GameStarted& gs)
   using namespace display_messages;
 
   std::visit([&gs] <typename GorL> (GorL& gl) {
-      state_get_players(gl) = gs;
+      gl.players = gs;
     }, game_state.state);
 
   lobby_to_game();
@@ -371,29 +323,27 @@ void RoboticClient::apply_event(display_messages::Game& game,
 {
   using namespace server_messages;
   std::visit([&game, &bombs, this] <typename Ev> (const Ev& ev) {
-      auto& [_1, _2, _3, _4, _5, _6, player_positions, blocks, _9, explosions, _11] = game;
-
       if constexpr (std::same_as<BombPlaced, Ev>) {
         auto& [id, position] = ev;
         bombs.insert({id, {position, game_state.timer}});
       } else if constexpr (std::same_as<BombExploded, Ev>) {
         auto& [id, killed, blocks_destroyed] = ev;
-        explosions_in_radius(explosions, bombs.at(id).first);
-        explosions.insert(bombs.at(id).first);
+        explosions_in_radius(game.explosions, bombs.at(id).first);
+        game.explosions.insert(bombs.at(id).first);
         bombs.erase(id);
 
         for (PlayerId plid : killed)
           game_state.killed_this_turn.insert(plid);
 
         for (Position pos : blocks_destroyed) {
-          blocks.erase(pos);
-          explosions.insert(pos);
+          game.blocks.erase(pos);
+          game.explosions.insert(pos);
         }
       } else if constexpr (std::same_as<PlayerMoved, Ev>) {
         auto& [id, position] = ev;
-        player_positions[id] = position;
+        game.player_positions[id] = position;
       } else if constexpr (std::same_as<BlockPlaced, Ev>) {
-        blocks.insert(ev);
+        game.blocks.insert(ev);
       } else {
         static_assert(always_false_v<Ev>, "Non-exhaustive pattern matching!");
       }
@@ -408,16 +358,17 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
   display_messages::Game& current_game =
     get<display_messages::Game>(game_state.state);
 
-  game_get_turn(current_game) = turnno;
-  game_get_explosions(current_game) = {};
-  game_state.old_blocks = game_get_blocks(current_game);
+  current_game.turn = turnno;
+  current_game.explosions = {};
+  game_state.old_blocks = current_game.blocks;
 
   for (const server_messages::Event& ev : events) {
     apply_event(current_game, game_state.bombs, ev);
   }
 
+  // Do not show past explosions.
   if (turnno == 0)
-    game_get_explosions(current_game) = {};
+    current_game.explosions = {};
 
   // Upon each turn the bombs get their timers reduced.
   for (auto& [_, bomb] : game_state.bombs)
@@ -436,7 +387,7 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
   const std::map<PlayerId, server_messages::Player>& players =
     std::visit([] <typename GorL> (const GorL& gl) {
       if constexpr (std::same_as<Lobby, GorL> || std::same_as<Game, GorL>) {
-        return state_get_players(gl);
+        return gl.players;
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
       }
@@ -472,15 +423,14 @@ void RoboticClient::update_game()
   std::visit([this] <typename GorL> (GorL& gl) {
       if constexpr (std::same_as<Lobby, GorL>) {
         // No bombs in the lobby.
-        return;
       } else if constexpr (std::same_as<Game, GorL>) {
-        game_get_bombs(gl) = {};
+        gl.bombs = {};
 
         for (auto& [_, bomb] : game_state.bombs)
-          game_get_bombs(gl).insert(bomb);
+          gl.bombs.insert(bomb);
 
         for (PlayerId plid : game_state.killed_this_turn)
-          ++game_get_scores(gl)[plid];
+          ++gl.scores[plid];
 
         game_state.killed_this_turn = {};
       } else {

@@ -4,8 +4,8 @@
 // It serialises data types according to simple protocol. Here only basic
 // serialisation is handled but this serves as an extensible layer of
 // abstraction (aka marshalling framework) that can still be used with other
-// complex structures: you could write your overloads for stream operators if
-// you would like to (but perhaps stick to tuples?).
+// complex structures: just write other overloads for stream operators that
+// would be struct specific (but perhaps stick to tuples if you can).
 
 #ifndef _MARSHAL_H_
 #define _MARSHAL_H_

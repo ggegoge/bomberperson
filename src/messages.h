@@ -1,13 +1,10 @@
 // Messages sent in our protocol.
 
-// I do not use structs or classes but tuples, pairs and aliases on purpose:
-// with marshal.h you can marshal and unmarshal tuples etc without writing any
-// extra adapters whereas if structs were to be used then it would be necessary
-// to write another overloads for each one of them.
-
-// Of course this causes some problems with sensible accessing tuple fields
-// but necessary getters can always be written and c++17's structured binding
-// decomposition is our friend.
+// I barely use structs (or classes) -- trying to stick to tuples, pairs and aliases
+// whenever I can but very much on purpose: with marshal.h you can marshal and
+// unmarshal pairs, tuples etc without writing any extra adapters whereas if structs
+// were to be used then it would be necessary to write overloads for each one of them.
+// In fact I do it for display messages but I generally avoid that.
 
 // Messages are in respective namespaces to avoid overt confusion with naming.
 
@@ -103,18 +100,48 @@ using ServerMessage = std::variant<Hello, AcceptedPlayer, GameStarted, Turn, Gam
 namespace display_messages
 {
 
-// Lobby(serv_name, players_count, size_x, size_y, game_length, radius, timer, players)
-using Lobby =
-  std::tuple<std::string, uint8_t, uint16_t, uint16_t, uint16_t, uint16_t, uint16_t,
-             std::map<PlayerId, server_messages::Player>>;
+// Representing Game and Lobby as proper structs for the sake of client being
+// able to easily modify these two. It would be painful to use tuples this big.
+struct Lobby {
+  std::string server_name;
+  uint8_t players_count;
+  uint16_t size_x;
+  uint16_t size_y;
+  uint16_t game_length;
+  uint16_t radius;
+  uint16_t timer;
+  std::map<PlayerId, server_messages::Player> players;
+};
 
-// Game(serv_name, size_x, size_y, game_length, turn, players, player_positions,
-//      blocks, bombs, explosions, scores)
-using Game =
-  std::tuple<std::string, uint16_t, uint16_t, uint16_t, uint16_t,
-             std::map<PlayerId, server_messages::Player>, std::map<PlayerId, Position>,
-             std::set<Position>, std::set<server_messages::Bomb>, std::set<Position>,
-             std::map<PlayerId, Score>>;
+struct Game {
+  std::string server_name;
+  uint16_t size_x;
+  uint16_t size_y;
+  uint16_t game_length;
+  uint16_t turn;
+  std::map<PlayerId, server_messages::Player> players;
+  std::map<PlayerId, Position> player_positions;
+  std::set<Position> blocks;
+  std::set<server_messages::Bomb> bombs;
+  std::set<Position> explosions;
+  std::map<PlayerId, Score> scores;
+};
+
+// We provide adapters for serialisation of custom structs as per marshal.h
+// description of the serialisation operator<< standard. No need for deserialiser
+// as we only send Game and Lobby.
+inline Serialiser& operator<<(Serialiser& ser, const Lobby& l)
+{
+  return ser << l.server_name << l.players_count << l.size_x << l.size_y
+             << l.game_length << l.radius << l.timer << l.players;
+}
+
+inline Serialiser& operator<<(Serialiser& ser, const Game& g)
+{
+  return ser << g.server_name << g.size_x << g.size_y << g.game_length << g.turn
+             << g.players << g.player_positions << g.blocks << g.bombs
+             << g.explosions << g.scores;
+}
 
 using DisplayMessage = std::variant<Lobby, Game>;
 
