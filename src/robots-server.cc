@@ -186,7 +186,7 @@ class RoboticServer {
 
   // threading
   // todo: many of those arent needed, are they
-  std::counting_semaphore<MAX_CLIENTS> clients_sem{MAX_CLIENTS};
+  // std::counting_semaphore<MAX_CLIENTS> clients_sem{MAX_CLIENTS};
   std::mutex acceptor_mutex;
   std::mutex game_master_mutex;
   // for hailer and joiner
