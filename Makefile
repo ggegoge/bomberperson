@@ -11,27 +11,27 @@ CLIENT_OBJS = $(CLIENT_SRC:%.cc=src/%.o)
 SERV_SRC = robots-server.cc readers.cc
 SERV_OBJS = $(SERV_SRC:%.cc=src/%.o)
 
-.PHONY: all clean release debug server-opt server-dbg client-opt client-dbg
+.PHONY: all clean release debug opt-server dbg-server opt-client dbg-client statics
 
 # Default target is release.
 all: release
 
 # providing these targets (release and debug) for user convenience
-release: server-opt client-opt
+release: opt-server opt-client
 
-debug: server-dbg client-dbg
+debug: dbg-server dbg-client
 
-server-opt: CXXFLAGS += -DNDEBUG -O2
-server-opt: robots-server
+opt-server: CXXFLAGS += -DNDEBUG -O2
+opt-server: robots-server
 
-client-opt: CXXFLAGS += -DNDEBUG -O2
-client-opt: robots-client
+opt-client: CXXFLAGS += -DNDEBUG -O2
+opt-client: robots-client
 
-server-dbg: CXXFLAGS += -g
-server-dbg: robots-server
+dbg-server: CXXFLAGS += -g
+dbg-server: robots-server
 
-client-dbg: CXXFLAGS += -g
-client-dbg: robots-client
+dbg-client: CXXFLAGS += -g
+dbg-client: robots-client
 
 # Executables
 robots-client: $(CLIENT_OBJS)
@@ -42,6 +42,8 @@ robots-server: $(SERV_OBJS)
 
 # Staticly linked targets only to help when eg someone would want to use program
 # compiled elsewhere.
+statics: robots-client-static robots-server-static
+
 robots-client-static: $(CLIENT_OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS_STATIC)
 
