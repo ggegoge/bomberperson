@@ -199,11 +199,13 @@ class RoboticServer {
 
   // Protection of variables.
 
-  // todo: this should also be a shared_mutex!
-  std::mutex players_mutex;
-  std::mutex playing_clients_mutex;
-  // This will provide us with a read-write lock for accessing turns_ser.
+  // We want to access players_mutex in a read-write manner.
+  std::shared_mutex players_mutex;
+
+  // Same with the serialiser that holds all turns.
   std::shared_mutex turns_mutex;
+
+  std::mutex playing_clients_mutex;
 
   // Random number generator used by the server.
   std::minstd_rand rand;
@@ -311,7 +313,7 @@ void RoboticServer::hail(tcp::socket& client)
     dbg("[client_handler] Client late innit, sending GameStarted.");
     server_messages::GameStarted gs;
     {
-      std::lock_guard<std::mutex> lk{players_mutex};
+      std::shared_lock read_lk{players_mutex};
       gs = players;
     }
     ser << ServerMessage{gs};
@@ -326,10 +328,12 @@ void RoboticServer::hail(tcp::socket& client)
     send_bytes(turns_bytes, client);
   } else {
     dbg("[client_handler] Sending players as a series of AcceptedPlayer messages.");
-    std::lock_guard<std::mutex> lk{players_mutex};
-    for (const auto& [plid, player] : players) {
-      server_messages::AcceptedPlayer ap{plid, player};
-      ser << ServerMessage{ap};
+    {
+      std::shared_lock read_lk{players_mutex};
+      for (const auto& [plid, player] : players) {
+        server_messages::AcceptedPlayer ap{plid, player};
+        ser << ServerMessage{ap};
+      }
     }
     send_bytes(ser.drain_bytes(), client);
   }
@@ -681,7 +685,7 @@ void RoboticServer::join_handler()
       if (clients.at(i).has_value() && !clients.at(i)->in_game) {
         clients.at(i)->in_game = true;
         {
-          std::lock_guard<std::mutex> lk{players_mutex};
+          std::lock_guard<std::shared_mutex> write_lk{players_mutex};
           id = get_free_id(players);
           players.insert({id, player});
         }
