@@ -113,7 +113,7 @@ public:
   void ser(const T& item) requires (!std::is_enum_v<T>)
   {
     uint8_t bytes[sizeof(T)];
-    *(T*)(bytes) = hton<T>(item);
+    *reinterpret_cast<T*>(bytes) = hton<T>(item);
 
     for (uint8_t byte : bytes)
       out.push_back(byte);
@@ -218,7 +218,7 @@ public:
   {
     try {
       std::vector<uint8_t> buff = r.read(sizeof(T));
-      item = ntoh<T>(*(T*)(buff.data()));
+      item = ntoh<T>(*reinterpret_cast<T*>(buff.data()));
     } catch (std::exception& e) {
       std::string err = "Failed to unmarshal a number: ";
       throw UnmarshallingError{err + e.what()};
