@@ -183,8 +183,8 @@ class RoboticServer {
   // The "Hello" message sent by our server does not change throughout its work.
   const server_messages::Hello hello;
 
-  // This turn is the zeroth turn that keeps all events since the game begun.
-  server_messages::Turn turn0{0, {}};
+  // Keep track of all turns that have happend.
+  std::vector<server_messages::Turn> all_turns;
 
   // For synchronisation.
 
@@ -199,7 +199,7 @@ class RoboticServer {
   // Protection of variables.
   std::mutex players_mutex;
   std::mutex playing_clients_mutex;
-  std::mutex turn0_mutex;
+  std::mutex all_turns_mutex;
 
   // Random number generator used by the server.
   std::minstd_rand rand;
@@ -242,8 +242,8 @@ private:
 
   // This thread works in a loop and after each turn gathers input from playing
   // clients and then applies their moves when it is possible. Having done that
-  // it adds the events to turn0 and makes a current turn object to be sent to all
-  // connected clients.
+  // it adds the turn to all_turns and makes a current turn object to be sent to
+  // all connected clients.
   void game_master();
 
   // This thread decides who is suitable to join the game. It works during lobby
@@ -261,7 +261,7 @@ private:
   // This sends the welcome info to the newly connected client.
   void hail(tcp::socket& client);
 
-  // Starting and ending a game. Starting is creating the initial turn0.
+  // Starting and ending a game. Starting is creating the initial turn.
   server_messages::Turn start_game();
   void end_game();
 
@@ -310,9 +310,11 @@ void RoboticServer::hail(tcp::socket& client)
     }
     ser << ServerMessage{gs};
     {
-      std::lock_guard<std::mutex> lk{turn0_mutex};
-      ser << ServerMessage{turn0};
-      dbg("[acceptor] Sending turn0 with ", turn0.second.size(), " events.");
+      std::lock_guard<std::mutex> lk{all_turns_mutex};
+      for (const server_messages::Turn& t : all_turns)
+        ser << ServerMessage{t};
+
+      dbg("[acceptor] Sending all turns ", all_turns.size(), " turns.");
     }
   } else {
     dbg("[acceptor] Sending players as a series of AcceptedPlayer messages.");
@@ -488,7 +490,7 @@ Position RoboticServer::do_move(Position pos, client_messages::Direction dir) co
 
 server_messages::Turn RoboticServer::start_game()
 {
-  dbg("[game_master] Starting the game, cleaning all data and composing turn0.");
+  dbg("[game_master] Starting the game, cleaning all data and composing turn 0.");
   killed_this_turn = {};
   positions = {};
   bombs = {};
@@ -698,8 +700,9 @@ void RoboticServer::game_master()
       for_game.wait(lk, [this] { return !lobby; });
       dbg("[game_master] Just woken up, starting a game.");
       // We are awake, out of lobby. Let's get this going then shall we.
-      current_turn = turn0 = start_game();
+      current_turn = start_game();
       turn_number = 0;
+      all_turns = {current_turn};
     }
 
     if (turn_number > 0) {
@@ -719,10 +722,9 @@ void RoboticServer::game_master()
         current_turn.second.push_back(server_messages::PlayerMoved{id, pos});
       }
 
-      std::lock_guard<std::mutex> lk{turn0_mutex};
-      // append those events to turn0
-      for (const server_messages::Event& ev : current_turn.second)
-        turn0.second.push_back(ev);
+      std::lock_guard<std::mutex> lk{all_turns_mutex};
+      // Save thus turn.
+      all_turns.push_back(current_turn);
     }
 
     dbg("[game_master] Turn ", current_turn.first);
