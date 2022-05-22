@@ -513,16 +513,16 @@ void RoboticClient::game_handler()
 
     update_game();
     gui_ser << game_state.state;
-    dbg("[game_handler] Sending ",  gui_ser.size(), " bytes to gui.");
+    dbg("[game_handler] Sending ", gui_ser.size(), " bytes to gui.");
     gui_socket.send_to(boost::asio::buffer(gui_ser.drain_bytes()), gui_endpoint);
   }
 }
 
 void RoboticClient::play()
 {
-  std::jthread input_worker{[this] () { input_handler(); }};
-  // Why waste the main thread, game_handler can have it.
-  game_handler();
+  std::jthread game_worker{[this] { game_handler(); }};
+  // Why waste the main thread, input_handler can have it.
+  input_handler();
 }
 
 };  // namespace anonymous

@@ -18,6 +18,7 @@
 #include <optional>
 #include <set>
 #include <thread>
+#include <shared_mutex>
 #include <atomic>
 #include <tuple>
 #include <type_traits>
@@ -185,8 +186,8 @@ class RoboticServer {
   // The "Hello" message sent by our server does not change throughout its work.
   const server_messages::Hello hello;
 
-  // This turn is the zeroth turn that keeps all events since the game begun.
-  server_messages::Turn turn0{0, {}};
+  // Save all turns to this serialiser as they happen.
+  Serialiser turns_ser;
 
   // For synchronisation.
 
@@ -199,9 +200,14 @@ class RoboticServer {
   std::condition_variable for_game;
 
   // Protection of variables.
-  std::mutex players_mutex;
+
+  // We want to access players_mutex in a read-write manner.
+  std::shared_mutex players_mutex;
+
+  // Same with the serialiser that holds all turns.
+  std::shared_mutex turns_mutex;
+
   std::mutex playing_clients_mutex;
-  std::mutex turn0_mutex;
 
   // Random number generator used by the server.
   std::minstd_rand rand;
@@ -244,8 +250,8 @@ private:
 
   // This thread works in a loop and after each turn gathers input from playing
   // clients and then applies their moves when it is possible. Having done that
-  // it adds the events to turn0 and makes a current turn object to be sent to all
-  // connected clients.
+  // it adds the turn to turns_ser and makes a current turn object to be sent to
+  // all connected clients.
   void game_master();
 
   // This thread decides who is suitable to join the game. It works during lobby
@@ -254,16 +260,18 @@ private:
   // all connected clients.
   void join_handler();
 
-  // This is the basic thread that handles input from a single client and manages
-  // one ConnectedClient in the vector of all connected clients.
-  void client_handler(size_t client_index);
+  // This is the basic thread that hails and handles a single client (its input).
+  void client_handler(ConnectedClient&& cl);
 
   // Helper and utility functions of all kinds
+
+  // Find a place for the client.
+  size_t find_place(ConnectedClient&& cl);
 
   // This sends the welcome info to the newly connected client.
   void hail(tcp::socket& client);
 
-  // Starting and ending a game. Starting is creating the initial turn0.
+  // Starting and ending a game. Starting is creating the initial turn.
   server_messages::Turn start_game();
   void end_game();
 
@@ -296,36 +304,41 @@ private:
 // Utility functions.
 void RoboticServer::hail(tcp::socket& client)
 {
-  dbg("[acceptor] Haling new client.");
+  dbg("[client_handler] Haling a client.");
   const auto& [hname, hpc, hx, hy, hgl, hr, ht] = hello;
-  dbg("[acceptor] sending Hello{\"", hname, "\"", ", ", static_cast<int>(hpc),
+  dbg("[client_handler] sending Hello{\"", hname, "\"", ", ", static_cast<int>(hpc),
       ", ", hx, ", ", hy, ", ", hgl, ", ", hr, ", ", ht, "}.");
   Serialiser ser;
   ser << ServerMessage{hello};
 
   if (!lobby) {
-    dbg("[acceptor] Client late innit, sending GameStarted.");
+    dbg("[client_handler] Client late innit, sending GameStarted.");
     server_messages::GameStarted gs;
     {
-      std::lock_guard<std::mutex> lk{players_mutex};
+      std::shared_lock read_lk{players_mutex};
       gs = players;
     }
     ser << ServerMessage{gs};
+    // Send hello to him.
+    send_bytes(ser.drain_bytes(), client);
+    std::vector<uint8_t> turns_bytes;
     {
-      std::lock_guard<std::mutex> lk{turn0_mutex};
-      ser << ServerMessage{turn0};
-      dbg("[acceptor] Sending turn0 with ", turn0.second.size(), " events.");
+      std::shared_lock read_lk{turns_mutex};
+      turns_bytes = turns_ser.to_bytes();
     }
+    dbg("[client_handler] Sending all turns that have happened already.");
+    send_bytes(turns_bytes, client);
   } else {
-    dbg("[acceptor] Sending players as a series of AcceptedPlayer messages.");
-    std::lock_guard<std::mutex> lk{players_mutex};
-    for (const auto& [plid, player] : players) {
-      server_messages::AcceptedPlayer ap{plid, player};
-      ser << ServerMessage{ap};
+    dbg("[client_handler] Sending players as a series of AcceptedPlayer messages.");
+    {
+      std::shared_lock read_lk{players_mutex};
+      for (const auto& [plid, player] : players) {
+        server_messages::AcceptedPlayer ap{plid, player};
+        ser << ServerMessage{ap};
+      }
     }
+    send_bytes(ser.drain_bytes(), client);
   }
-  dbg("[acceptor] Hailing with ", ser.size(), " bytes.");
-  send_bytes(ser.drain_bytes(), client);
 }
 
 void RoboticServer::send_bytes(const std::vector<uint8_t>& bytes, tcp::socket& sock)
@@ -490,7 +503,7 @@ Position RoboticServer::do_move(Position pos, client_messages::Direction dir) co
 
 server_messages::Turn RoboticServer::start_game()
 {
-  dbg("[game_master] Starting the game, cleaning all data and composing turn0.");
+  dbg("[game_master] Starting the game, cleaning all data and composing turn 0.");
   killed_this_turn = {};
   positions = {};
   bombs = {};
@@ -544,6 +557,21 @@ void RoboticServer::end_game()
   }
 }
 
+size_t RoboticServer::find_place(ConnectedClient&& cl)
+{
+  for (size_t i = 0; i < clients.size(); ++i) {
+    std::lock_guard<std::mutex> lk{clients_mutices.at(i)};
+    if (clients.at(i).has_value())
+      continue;
+
+    ++number_of_clients;
+    clients.at(i) = std::move(cl);
+    return i;
+  }
+
+  throw ServerLogicError{"There should be a place for the client!"};
+}
+
 // Thread functions.
 void RoboticServer::acceptor()
 {
@@ -564,40 +592,31 @@ void RoboticServer::acceptor()
     tcp_acceptor.accept(new_client);
     dbg("[acceptor] Accepted new client ", new_client.remote_endpoint().address(),
         ":", new_client.remote_endpoint().port());
-    try {
-      hail(new_client);
-    } catch (std::exception& e) {
-      // Disconnected during hailing? We ignore this connection then.
-      dbg("[acceptor] Failed to hail the new client, disconnecting.");
-      continue;
-    }
 
-    // Having hailed the client find him a place in the array.
-    // There should be a place as number_of_clients has been checked beforehand.
     ConnectedClient cl{std::move(new_client), false, {}, 0};
-    for (size_t i = 0; i < clients.size(); ++i) {
-      if (clients.at(i).has_value())
-        continue;
-
-      ++number_of_clients;
-      // Do not need a mutex here as it is none (hence shouldn't be accessed).
-      // Also I am assigning in lobby state only when only client_handlers and
-      // the acceptor itself access clients vector.
-      clients.at(i) = std::move(cl);
-      std::jthread th{[this, i] { client_handler(i); }};
-      // We detach the client handling thread as its execution is independent.
-      th.detach();
-      break;
-    }
+    std::jthread th{[this, cl=std::move(cl)] () mutable {
+      client_handler(std::move(cl));
+    }};
+    // We detach the client handling thread as its execution is independent.
+    th.detach();
   }
 }
 
-void RoboticServer::client_handler(size_t i)
+void RoboticServer::client_handler(ConnectedClient&& cl)
 {
   using namespace client_messages;
-  // Can access sock with no mutex as no one else touches it apart from writing.
-  std::string addr = address_from_sock(clients.at(i)->sock);
-  dbg("[client_handler] Handling client ", i, " from ", addr);
+  std::string addr = address_from_sock(cl.sock);
+  dbg("[client_handler] Handling client ", addr);
+
+  try {
+    hail(cl.sock);
+  } catch (std::exception& e) {
+    dbg("[client_handler] Failed to hail the client, ignoring it then.");
+    --number_of_clients;
+    return;
+  }
+
+  size_t i = find_place(std::move(cl));
   Deserialiser<ReaderTCP> deser{clients.at(i)->sock};
   for (;;) {
     try {
@@ -668,7 +687,7 @@ void RoboticServer::join_handler()
       if (clients.at(i).has_value() && !clients.at(i)->in_game) {
         clients.at(i)->in_game = true;
         {
-          std::lock_guard<std::mutex> lk{players_mutex};
+          std::lock_guard<std::shared_mutex> write_lk{players_mutex};
           id = get_free_id(players);
           players.insert({id, player});
         }
@@ -700,8 +719,9 @@ void RoboticServer::game_master()
       for_game.wait(lk, [this] { return !lobby; });
       dbg("[game_master] Just woken up, starting a game.");
       // We are awake, out of lobby. Let's get this going then shall we.
-      current_turn = turn0 = start_game();
+      current_turn = start_game();
       turn_number = 0;
+      turns_ser.drain_bytes();
     }
 
     if (turn_number > 0) {
@@ -721,10 +741,8 @@ void RoboticServer::game_master()
         current_turn.second.push_back(server_messages::PlayerMoved{id, pos});
       }
 
-      std::lock_guard<std::mutex> lk{turn0_mutex};
-      // append those events to turn0
-      for (const server_messages::Event& ev : current_turn.second)
-        turn0.second.push_back(ev);
+      std::lock_guard<std::shared_mutex> write_lk{turns_mutex};
+      turns_ser << ServerMessage{current_turn};
     }
 
     dbg("[game_master] Turn ", current_turn.first);
