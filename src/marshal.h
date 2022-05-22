@@ -10,20 +10,11 @@
 #ifndef _MARSHAL_H_
 #define _MARSHAL_H_
 
-// There are problems on macos with changing the byte order.
-#ifdef __MACH__
-#  include <libkern/OSByteOrder.h>
-#  define htobe64(x) OSSwapHostToBigInt64(x)
-#  define be64toh(x) OSSwapBigInt64ToHost(x)
-#else
-#  include <endian.h>
-#endif // __MACH__
-
-// htonl and htons
+// Byte order
 #include <arpa/inet.h>
+#include <endian.h>
 
 #include <type_traits>
-#include <exception>
 #include <stdexcept>
 #include <concepts>
 #include <variant>
@@ -40,8 +31,7 @@
 // do you want to read and it should tell you how many bytes are there to be
 // read at any given time.
 template <typename T>
-concept Readable = requires (T x, size_t nbytes)
-{
+concept Readable = requires (T x, size_t nbytes) {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
   {x.avalaible()} -> std::same_as<size_t>;
 };
@@ -49,8 +39,7 @@ concept Readable = requires (T x, size_t nbytes)
 // This concepts ensures that type Seq represents an iterable, sized container.
 // The constraints are not overly strong as I wanted to keep it simple.
 template <typename Seq>
-concept Iterable = requires (Seq seq)
-{
+concept Iterable = requires (Seq seq) {
   {seq.size()} -> std::integral;
   {seq.cbegin()};
   {seq.cend()};
@@ -83,7 +72,7 @@ inline constexpr T ntoh(T num)
     return num;
 }
 
-// Unmarshalling may fail whereas marshalling is our protocol infalliable.
+// Unmarshalling may fail whereas marshalling in our protocol is infalliable.
 class UnmarshallingError : public std::runtime_error {
 public:
   UnmarshallingError()
@@ -91,7 +80,6 @@ public:
   UnmarshallingError(const std::string& msg) : std::runtime_error{msg} {}
 };
 
-// Class for data serialisation.
 class Serialiser {
   std::vector<uint8_t> out;
 public:

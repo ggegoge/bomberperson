@@ -1,4 +1,4 @@
-// Implementation of a client for the robots game.
+// Client for the bomberperson game.
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/io_context.hpp>
@@ -6,7 +6,6 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/program_options.hpp>
-#include <boost/program_options/errors.hpp>
 #include <map>
 #include <set>
 #include <thread>
@@ -62,9 +61,7 @@ concept LobbyOrGame = std::same_as<T, display_messages::Lobby> ||
 
 class ClientError : public std::runtime_error {
 public:
-  ClientError()
-    : runtime_error("Client error!") {}
-
+  ClientError() : runtime_error("Client error!") {}
   ClientError(const std::string& msg) : runtime_error(msg) {}
 };
 
@@ -173,7 +170,7 @@ private:
   // such update it should tell the gui to show what is going on appropriately.
   void game_handler();
 
-  // Game'ise the lobby, changes the held game state appropriately.
+  // Game'ise the lobby, convets the held game _state.state.
   void lobby_to_game();
 
   // Fill bombs in current game_state.state based on game_state.bombs and update
@@ -238,11 +235,8 @@ void RoboticClient::lobby_to_game()
         for (auto& [plid, _] : gl.players)
           scores.insert({plid, 0});
 
-        auto& [server_name, players_count, size_x, size_y,
-               game_length, explosion_radius, timer, players] = gl;
-
-        Game g{server_name, size_x, size_y, game_length,
-          0, players, {}, {}, {}, {}, scores};
+        Game g{gl.server_name, gl.size_x, gl.size_y, gl.game_length,
+          0, gl.players, {}, {}, {}, {}, scores};
         return DisplayMessage{g};
       } else if constexpr (std::same_as<Game, GorL>) {
         return DisplayMessage{gl};
@@ -389,7 +383,6 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
     }, game_state.state);
 
   std::cout << "GAME ENDED!!!\n";
-
   for (auto [id, score] : ge)
     std::cout << static_cast<int>(id) << "\t" << players.at(id).first
          << "@" << players.at(id).second << " got killed " << score << " times!\n";
@@ -399,11 +392,8 @@ void RoboticClient::ge_handler(server_messages::GameEnded& ge)
       if constexpr (std::same_as<Lobby, GorL>) {
         return DisplayMessage{gl};
       } else if constexpr (std::same_as<Game, GorL>) {
-        auto& [server_name, size_x, size_y, game_length,
-               _5, _6, _7, _8, _9, _10, _11] = gl;
-
-        Lobby l{server_name, game_state.players_count, size_x,
-          size_y, game_length, game_state.explosion_radius, game_state.timer, {}};
+        Lobby l{gl.server_name, game_state.players_count, gl.size_x,
+          gl.size_y, gl.game_length, game_state.explosion_radius, game_state.timer, {}};
         return DisplayMessage{l};
       } else {
         static_assert(always_false_v<GorL>, "Non-exhaustive pattern matching!");
@@ -459,11 +449,7 @@ ClientMessage RoboticClient::input_to_client(InputMessage& msg)
 {
   using namespace client_messages;
   return std::visit([] <typename T> (T& x) -> ClientMessage {
-      if constexpr (std::same_as<T, PlaceBomb> || std::same_as<T, PlaceBlock> ||
-                    std::same_as<T, Move>)
-        return x;
-      else
-        static_assert(always_false_v<T>, "Non-exhaustive pattern matching!");
+      return x;
     }, msg);
 }
 
