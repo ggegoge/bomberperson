@@ -462,7 +462,7 @@ void RoboticClient::input_handler()
 
   for (;;) {
     dbg("[input_handler] Waiting for input...");
-    gui_deser.readable().sock_fill(gui_socket, gui_endpoint);
+    gui_deser.readable().sock_fill(gui_socket);
 
     try {
       gui_deser >> inp;

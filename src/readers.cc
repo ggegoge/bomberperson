@@ -27,9 +27,9 @@ size_t ReaderUDP::avalaible() const
   return buff_size - pos;
 }
 
-void ReaderUDP::sock_fill(udp::socket& sock, udp::endpoint& endp)
+void ReaderUDP::sock_fill(udp::socket& sock)
 {
-  buff_size = sock.receive_from(boost::asio::buffer(buff), endp);
+  buff_size = sock.receive(boost::asio::buffer(buff));
   pos = 0;
 }
 
