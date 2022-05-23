@@ -319,12 +319,12 @@ public:
 private:
   // Helper function for creating a variant from chosen index.
   // source: https://stackoverflow.com/a/60567091/9058764
-  template <class Var, std::size_t I = 0>
-  Var variant_from_index(std::size_t index)
+  template <class Var, size_t I = 0>
+  Var variant_from_index(size_t index)
   {
-	if constexpr(I >= std::variant_size_v<Var>) {
+    if constexpr (I >= std::variant_size_v<Var>) {
       throw UnmarshallingError{"Index does not match the variant!"};
-	} else {
+    } else {
       // This changes runtime index into a compile time index, brilliant.
       return index == 0
         ? Var{std::in_place_index<I>}
