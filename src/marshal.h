@@ -147,9 +147,7 @@ public:
   template <typename... Ts>
   void ser(const std::tuple<Ts...>& tuple)
   {
-    std::apply([this] <typename... T> (const T&... v) {
-        (*this << ... << v);
-      }, tuple);
+    std::apply([this] (const Ts&... v) { (*this << ... << v); }, tuple);
   }
 
   template <typename... Ts>
@@ -278,9 +276,7 @@ public:
   template <typename... Ts>
   void deser(std::tuple<Ts...>& tuple)
   {
-    std::apply([this] <typename... T> (T&... v) {
-        (*this >> ... >> v);
-      }, tuple);
+    std::apply([this] (Ts&... v) { (*this >> ... >> v); }, tuple);
   }
 
   // The trickiest. First create a default variant based on the index and then

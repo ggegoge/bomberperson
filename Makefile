@@ -53,7 +53,6 @@ robots-server-static: $(SERV_OBJS)
 # OBJS
 src/robots-client.o: src/robots-client.cc src/marshal.h src/readers.h src/messages.h src/dbg.h
 src/robots-server.o: src/robots-server.cc src/marshal.h src/readers.h src/messages.h src/dbg.h
-src/readers.o: src/readers.cc src/readers.h
 
 clean:
 	-rm -f $(CLIENT_OBJS) $(SERV_OBJS)
