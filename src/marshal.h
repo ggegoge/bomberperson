@@ -148,7 +148,7 @@ public:
   void ser(const std::tuple<Ts...>& tuple)
   {
     std::apply([this] <typename... T> (const T&... v) {
-        ( *this << ... << v);
+        (*this << ... << v);
       }, tuple);
   }
 
@@ -279,7 +279,7 @@ public:
   void deser(std::tuple<Ts...>& tuple)
   {
     std::apply([this] <typename... T> (T&... v) {
-        ( *this >> ... >> v);
+        (*this >> ... >> v);
       }, tuple);
   }
 

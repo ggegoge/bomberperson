@@ -24,6 +24,7 @@
 #include "readers.h"
 #include "marshal.h"
 #include "messages.h"
+#include "dbg.h"
 
 namespace po = boost::program_options;
 
@@ -38,22 +39,6 @@ using client_messages::ClientMessage;
 
 namespace
 {
-
-#ifdef NDEBUG
-constexpr bool debug = false;
-#else
-constexpr bool debug = true;
-#endif  // NDEBUG
-
-// Print a debug line to the stderr (only if NDEBUG is not defined).
-template <typename... Args>
-void dbg(Args&&... args)
-{
-  if constexpr (debug) {
-    (std::cerr << ... << args);
-    std::cerr << "\n";
-  }
-}
 
 template <typename T>
 concept LobbyOrGame = std::same_as<T, display_messages::Lobby> ||
