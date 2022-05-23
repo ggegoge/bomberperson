@@ -32,6 +32,7 @@
 #include "readers.h"
 #include "marshal.h"
 #include "messages.h"
+#include "dbg.h"
 
 namespace po = boost::program_options;
 
@@ -47,22 +48,6 @@ using client_messages::ClientMessage;
 namespace
 {
 
-#ifdef NDEBUG
-constexpr bool debug = false;
-#else
-constexpr bool debug = true;
-#endif  // NDEBUG
-
-// Print a debug line to the stderr (only if NDEBUG is not defined).
-template <typename... Args>
-void dbg(Args&&... args)
-{
-  if constexpr (debug) {
-    (std::cerr << ... << args);
-    std::cerr << "\n";
-  }
-}
-
 constexpr size_t MAX_CLIENTS = 25;
 
 constexpr const char* CZUMPI = "czumpi";
@@ -72,7 +57,7 @@ template<typename> inline constexpr bool always_false_v = false;
 
 class ServerError : public std::runtime_error {
 public:
-  ServerError() : runtime_error("Server error!") {}
+  ServerError() : runtime_error{"Server error!"} {}
   ServerError(const std::string& msg) : runtime_error{msg} {}
 };
 
@@ -412,7 +397,7 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       std::visit([this, &turn, plid, &addr] <typename Cm> (const Cm& cm) {
           auto& [_, events] = turn;
           if constexpr (std::same_as<Cm, Join>) {
-            throw ServerLogicError("Join should not be placed as current move!");
+            throw ServerLogicError{"Join should not be placed as current move!"};
           } else if constexpr (std::same_as<Cm, PlaceBomb>) {
             dbg("[game_master] Playing client ", addr, " ie. player ",
                 static_cast<int>(plid), " has placed a bomb.");

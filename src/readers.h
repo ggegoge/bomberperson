@@ -1,6 +1,6 @@
-// The netio module serves as an interface for reading pure bytes from sockets
+// The readers module serves as an interface for reading pure bytes from sockets
 // and buffers. The classes here are written in such a manner that they can be
-// used by the serialisation module.
+// used by the serialisation module (ie they satisfy the "Readable" concept).
 
 #ifndef _READERS_H_
 #define _READERS_H_
@@ -22,8 +22,7 @@ public:
   ReaderUDP() {}
 
   // Fill the reader with a udp socket.
-  void sock_fill(boost::asio::ip::udp::socket& sock,
-                 boost::asio::ip::udp::endpoint& endp);
+  void sock_fill(boost::asio::ip::udp::socket& sock);
 
   std::vector<uint8_t> read(size_t nbytes);
   size_t avalaible() const;

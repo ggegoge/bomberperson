@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <concepts>
 #include <variant>
+#include <ranges>
 #include <string>
 #include <vector>
 #include <tuple>
@@ -34,15 +35,6 @@ template <typename T>
 concept Readable = requires (T x, size_t nbytes) {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
   {x.avalaible()} -> std::same_as<size_t>;
-};
-
-// This concepts ensures that type Seq represents an iterable, sized container.
-// The constraints are not overly strong as I wanted to keep it simple.
-template <typename Seq>
-concept Iterable = requires (Seq seq) {
-  {seq.size()} -> std::integral;
-  {seq.cbegin()};
-  {seq.cend()};
 };
 
 // Changing the byte order. Numbers are serialised in the network order.
@@ -62,11 +54,11 @@ inline constexpr T hton(T num)
 template <typename T>
 inline constexpr T ntoh(T num)
 {
-  if constexpr (std::is_same_v<T, uint64_t>)
+  if constexpr (std::same_as<T, uint64_t>)
     return htobe64(num);
-  else if constexpr (std::is_same_v<T, uint32_t>)
+  else if constexpr (std::same_as<T, uint32_t>)
     return ntohl(num);
-  else if constexpr (std::is_same_v<T, uint16_t>)
+  else if constexpr (std::same_as<T, uint16_t>)
     return ntohs(num);
   else
     return num;
@@ -75,9 +67,8 @@ inline constexpr T ntoh(T num)
 // Unmarshalling may fail whereas marshalling in our protocol is infalliable.
 class UnmarshallingError : public std::runtime_error {
 public:
-  UnmarshallingError()
-    : std::runtime_error{"Error in unmarshalling!"} {}
-  UnmarshallingError(const std::string& msg) : std::runtime_error{msg} {}
+  UnmarshallingError() : runtime_error{"Error in unmarshalling!"} {}
+  UnmarshallingError(const std::string& msg) : runtime_error{msg} {}
 };
 
 class Serialiser {
@@ -113,7 +104,7 @@ public:
   void ser(const T& item) requires (!std::is_enum_v<T>)
   {
     uint8_t bytes[sizeof(T)];
-    *(T*)(bytes) = hton<T>(item);
+    *reinterpret_cast<T*>(bytes) = hton<T>(item);
 
     for (uint8_t byte : bytes)
       out.push_back(byte);
@@ -128,18 +119,17 @@ public:
   
   void ser(const std::string& str)
   {
-    ser<uint8_t>(static_cast<uint8_t>(str.length()));
+    ser(static_cast<uint8_t>(str.length()));
 
     for (char c : str)
       out.push_back(static_cast<uint8_t>(c));
   }
 
   // Marshalling of sets, vectors, maps etc.
-  template <Iterable Seq>
+  template <std::ranges::sized_range Seq>
   void ser(const Seq& seq)
   {
-    uint32_t len = static_cast<uint32_t>(seq.size());
-    ser(len);
+    ser(static_cast<uint32_t>(std::ranges::size(seq)));
 
     for (const auto& item : seq)
       *this << item;
@@ -157,17 +147,16 @@ public:
   template <typename... Ts>
   void ser(const std::tuple<Ts...>& tuple)
   {
-    std::apply([this] (const auto&... v) { ( *this << ... << v); }, tuple);
+    std::apply([this] <typename... T> (const T&... v) {
+        (*this << ... << v);
+      }, tuple);
   }
 
   template <typename... Ts>
   void ser(const std::variant<Ts...>& var)
   {
-    uint8_t index = static_cast<uint8_t>(var.index());
-    std::visit([this, index] <typename T> (const T& x) {
-        ser(index);
-        *this << x;
-      }, var);
+    ser(static_cast<uint8_t>(var.index()));
+    std::visit([this] <typename T> (const T& x) { *this << x; }, var);
   }
 
   // Empty structures are useful for variants hence we allow those.
@@ -218,7 +207,7 @@ public:
   {
     try {
       std::vector<uint8_t> buff = r.read(sizeof(T));
-      item = ntoh<T>(*(T*)(buff.data()));
+      item = ntoh<T>(*reinterpret_cast<T*>(buff.data()));
     } catch (std::exception& e) {
       std::string err = "Failed to unmarshal a number: ";
       throw UnmarshallingError{err + e.what()};
@@ -289,7 +278,9 @@ public:
   template <typename... Ts>
   void deser(std::tuple<Ts...>& tuple)
   {
-    std::apply([this] (auto&... v) { ( *this >> ... >> v); }, tuple);
+    std::apply([this] <typename... T> (T&... v) {
+        (*this >> ... >> v);
+      }, tuple);
   }
 
   // The trickiest. First create a default variant based on the index and then
@@ -301,9 +292,7 @@ public:
     uint8_t kind;
     deser(kind);
     var = variant_from_index<Var>(kind);
-    std::visit([this] <typename T> (T& x) {
-        *this >> x;
-      }, var);
+    std::visit([this] <typename T> (T& x) { *this >> x; }, var);
   }
 
   template <typename T>
@@ -319,12 +308,12 @@ public:
 private:
   // Helper function for creating a variant from chosen index.
   // source: https://stackoverflow.com/a/60567091/9058764
-  template <class Var, std::size_t I = 0>
-  Var variant_from_index(std::size_t index)
+  template <class Var, size_t I = 0>
+  Var variant_from_index(size_t index)
   {
-	if constexpr(I >= std::variant_size_v<Var>) {
+    if constexpr (I >= std::variant_size_v<Var>) {
       throw UnmarshallingError{"Index does not match the variant!"};
-	} else {
+    } else {
       // This changes runtime index into a compile time index, brilliant.
       return index == 0
         ? Var{std::in_place_index<I>}
