@@ -1,7 +1,7 @@
 SHELL=/bin/sh
 
 CXX = g++
-CXXFLAGS = -Wall -Wextra -Werror -std=c++20 -Wconversion
+CXXFLAGS = -Wall -Wextra -Werror -std=c++20 -Wconversion -O2
 LDFLAGS = -lboost_program_options -lpthread
 LDFLAGS_STATIC = -Wl,-Bstatic -lboost_program_options -Wl,-Bdynamic -lpthread
 
@@ -21,10 +21,10 @@ release: opt-server opt-client
 
 debug: dbg-server dbg-client
 
-opt-server: CXXFLAGS += -DNDEBUG -O2
+opt-server: CXXFLAGS += -DNDEBUG
 opt-server: robots-server
 
-opt-client: CXXFLAGS += -DNDEBUG -O2
+opt-client: CXXFLAGS += -DNDEBUG
 opt-client: robots-client
 
 dbg-server: CXXFLAGS += -g

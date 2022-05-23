@@ -61,31 +61,12 @@ concept LobbyOrGame = std::same_as<T, display_messages::Lobby> ||
 
 class ClientError : public std::runtime_error {
 public:
-  ClientError() : runtime_error("Client error!") {}
-  ClientError(const std::string& msg) : runtime_error(msg) {}
+  ClientError() : runtime_error{"Client error!"} {}
+  ClientError(const std::string& msg) : runtime_error{msg} {}
 };
 
 // Helper for std::visiting mimicking pattern matching, inspired by cppref.
 template<typename> inline constexpr bool always_false_v = false;
-
-struct GameState {
-  DisplayMessage state;
-  std::map<BombId, server_messages::Bomb> bombs;
-
-  // Set since "you only die once".
-  std::set<PlayerId> killed_this_turn;
-
-  // Need to keep those for proper display of explosions.
-  std::set<Position> old_blocks;
-
-  // Whether to treat gui input as player action or as a Join request.
-  bool lobby = true;
-
-  // Server parameters.
-  uint16_t timer;
-  uint8_t players_count;
-  uint16_t explosion_radius;
-};
 
 std::pair<std::string, std::string> get_addr(const std::string& addr)
 {
@@ -106,6 +87,26 @@ std::pair<std::string, std::string> get_addr(const std::string& addr)
     throw ClientError{"Invalid address!"};
   }
 }
+
+// Structure representing current state of affairs.
+struct GameState {
+  DisplayMessage state;
+  std::map<BombId, server_messages::Bomb> bombs;
+
+  // Set since "you only die once".
+  std::set<PlayerId> killed_this_turn;
+
+  // Need to keep those for proper display of explosions.
+  std::set<Position> old_blocks;
+
+  // Whether to treat gui input as player action or as a Join request.
+  bool lobby = true;
+
+  // Server parameters.
+  uint16_t timer;
+  uint8_t players_count;
+  uint16_t explosion_radius;
+};
 
 // Main class representing the client.
 class RoboticClient {

@@ -70,7 +70,7 @@ template<typename> inline constexpr bool always_false_v = false;
 
 class ServerError : public std::runtime_error {
 public:
-  ServerError() : runtime_error("Server error!") {}
+  ServerError() : runtime_error{"Server error!"} {}
   ServerError(const std::string& msg) : runtime_error{msg} {}
 };
 
@@ -410,7 +410,7 @@ void RoboticServer::gather_moves(server_messages::Turn& turn)
       std::visit([this, &turn, plid, &addr] <typename Cm> (const Cm& cm) {
           auto& [_, events] = turn;
           if constexpr (std::same_as<Cm, Join>) {
-            throw ServerLogicError("Join should not be placed as current move!");
+            throw ServerLogicError{"Join should not be placed as current move!"};
           } else if constexpr (std::same_as<Cm, PlaceBomb>) {
             dbg("[game_master] Playing client ", addr, " ie. player ",
                 static_cast<int>(plid), " has placed a bomb.");
