@@ -185,6 +185,10 @@ class RoboticServer {
   // Same with the serialiser that holds all turns.
   std::shared_mutex turns_mutex;
 
+  // When it comes to haling we also want to be sure we are doing this sharedly.
+  // todo: inspect this carefully pleeease
+  std::shared_mutex hail_mutex;
+
   std::mutex playing_clients_mutex;
 
   // Random number generator used by the server.
@@ -592,18 +596,23 @@ void RoboticServer::client_handler(ConnectedClient&& cl)
 {
   using namespace client_messages;
   std::string addr = address_from_sock(cl.sock);
+  size_t i;
   dbg("[client_handler] Handling client ", addr);
 
-  try {
-    hail(cl.sock);
-  } catch (std::exception& e) {
+  {
+    std::shared_lock hail_lk{hail_mutex};
+    try {
+      hail(cl.sock);
+    } catch (std::exception& e) {
     dbg("[client_handler] Failed to hail the client, good bye.");
     --number_of_clients;
     return;
+    }
+
+    i = find_place(std::move(cl));
+    dbg("[client_handler] Client ", addr, " added to the array of listening clients.");
   }
 
-  size_t i = find_place(std::move(cl));
-  dbg("[client_handler] Client ", addr, " added to the array of listening clients.");
   Deserialiser<ReaderTCP> deser{clients.at(i)->sock};
   for (;;) {
     try {
@@ -648,7 +657,12 @@ void RoboticServer::join_handler()
     // all players are here...
     if (lobby && players.size() == players_count) {
       dbg("[join_handler] Required number of players joined, waking up the gm.");
-      lobby = false;
+      {
+        // This is here so that when hailing someone we tell them the truth
+        // about the game having started or not.
+        std::lock_guard<std::shared_mutex> hail_lk{hail_mutex};
+        lobby = false;
+      }
       // wake up the game master, he has waited enough did he not
       for_game.notify_all();
     }
@@ -698,7 +712,10 @@ void RoboticServer::game_master()
     server_messages::Turn current_turn{turn_number, {}};
     if (turn_number == game_len || lobby) {
       dbg("[game_master] Lobby, going to wait for players.");
-      lobby = true;
+      {
+        std::lock_guard<std::shared_mutex> hail_lk{hail_mutex};
+        lobby = true;
+      }
       std::unique_lock lk{game_master_mutex};
       for_game.wait(lk, [this] { return !lobby; });
       dbg("[game_master] Just woken up, starting a game, are we not?.");
@@ -728,6 +745,10 @@ void RoboticServer::game_master()
 
       std::lock_guard<std::shared_mutex> write_lk{turns_mutex};
       turns_ser << ServerMessage{current_turn};
+    } else {
+      server_messages::GameStarted gs = players;
+      dbg("[game_master] Sending GameStarted to all.");
+      send_to_all(ServerMessage{gs});
     }
 
     dbg("[game_master] Turn ", current_turn.first, ", sending ",
