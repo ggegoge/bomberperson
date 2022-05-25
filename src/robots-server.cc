@@ -577,6 +577,9 @@ void RoboticServer::acceptor()
 
     tcp::socket new_client(io_ctx);
     tcp_acceptor.accept(new_client);
+    tcp::no_delay option(true);
+    new_client.set_option(option);
+
     dbg("[acceptor] Accepted new client ", new_client.remote_endpoint().address(),
         ":", new_client.remote_endpoint().port());
 
