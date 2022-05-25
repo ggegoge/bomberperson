@@ -23,8 +23,6 @@
 #include <string>
 #include <vector>
 #include <tuple>
-#include <map>
-#include <set>
 #include <cstddef>
 #include <cstdint>
 
@@ -38,14 +36,14 @@ concept Readable = requires (T x, size_t nbytes) {
   {x.avalaible()} -> std::same_as<size_t>;
 };
 
-// Concept for checking if a tyoe represents a pair.
+// Simple check if a type represents a pair.
 template <typename P>
 concept is_pair =  requires (P p) {
   typename P::first_type;
   typename P::second_type;
 };
 
-// Remove underlying const qualifiers in a pair (if it is a pair).
+// Remove underlying const qualifiers in a pair (if it is a pair!).
 template <bool is_pair, typename P>
 struct remove_const_pair {
   using type = std::pair<std::remove_cv_t<typename P::first_type>,
@@ -106,7 +104,7 @@ public:
     return out;
   }
 
-  std::vector<uint8_t>& to_bytes()
+  const std::vector<uint8_t>& to_bytes()
   {
     return out;
   }
@@ -132,13 +130,13 @@ public:
       out.push_back(byte);
   }
 
-  // All enums are serialised as one-byte integers!
+  // Enums are serialised as one-byte integers.
   template <typename T>
   void ser(const T& enum_item) requires std::is_enum_v<T>
   {
     ser(static_cast<uint8_t>(enum_item));
   }
-  
+
   void ser(const std::string& str)
   {
     ser(static_cast<uint8_t>(str.length()));
@@ -157,8 +155,8 @@ public:
       *this << item;
   }
 
-  // Note: thanks to this function std::map is also serialisable due to being an
-  // iterable of key-value pairs.
+  // Note: thanks to this function std::map is also serialisable due to being
+  // a sized range of key-value pairs.
   template <typename T1, typename T2>
   void ser(const std::pair<T1, T2>& pair)
   {
@@ -249,10 +247,14 @@ public:
     }
   }
 
+  // Generic deserialisation of iterable sequences to which you can insert.
+  // Works on vectors, sets and maps as well, sized range concept for safety.
   template <std::ranges::sized_range Seq>
   void deser(Seq& seq)
   {
+    // Get the underlying type of elements.
     using value_type = std::remove_cvref_t<typename Seq::iterator::value_type>;
+    // The following is needed if Seq is std::map.
     using T = typename remove_const_pair<is_pair<value_type>, value_type>::type;
 
     uint32_t len;
