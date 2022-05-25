@@ -108,6 +108,9 @@ class RoboticClient {
   Deserialiser<ReaderTCP> server_deser;
   Deserialiser<ReaderUDP> gui_deser;
   GameState game_state;
+
+  // Propagate exceptions between threads.
+  std::exception_ptr exception;
 public:
   RoboticClient(const std::string& name, uint16_t port,
                 const std::string& server_addr, const std::string& gui_addr)
@@ -415,6 +418,9 @@ void RoboticClient::update_game()
 
 // Implementation of the server message handlers. Sadly there's no pattern
 // matching in C++ (yet, we were born too early) so std::visit must do.
+// The handling process is performed so that no matter how odd the server's
+// behaviour is the client can do something sensible (whilst accepting server's
+// authority and considering its decisions to be authoritative).
 void RoboticClient::server_msg_handler(ServerMessage& msg)
 {
   using namespace server_messages;
@@ -457,7 +463,12 @@ void RoboticClient::input_handler()
       gui_deser >> inp;
       gui_deser.no_trailing_bytes();
     } catch (UnmarshallingError& e) {
-      dbg("[input_handler] invalid input (ignored): ", e.what());
+      dbg("[input_handler] Invalid input (ignored): ", e.what());
+      if (exception) {
+        dbg("[input_handler] Some exception happened in another thread, exiting.");
+        return;
+      }
+
       continue;
     }
 
@@ -471,7 +482,19 @@ void RoboticClient::input_handler()
 
     server_ser << msg;
     dbg("[input_handler] Sending ", server_ser.size(), " bytes to the server");
-    server_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
+    try {
+      server_socket.send(boost::asio::buffer(server_ser.drain_bytes()));
+    } catch (std::exception& e) {
+      dbg("[input_handler] An exception occured while trying to write to the server.");
+      exception = std::make_exception_ptr(ClientError{"Failed to write to server."});
+      // Close the socket the second thread waits on so it can exit too.
+      try {
+        server_socket.shutdown(server_socket.shutdown_receive);
+        gui_socket.shutdown(gui_socket.shutdown_both);
+      } catch (std::exception& ignored) {}
+
+      return;
+    }
   }
 }
 
@@ -482,7 +505,20 @@ void RoboticClient::game_handler()
 
   for (;;) {
     dbg("[game_handler] Tying to read a message from server...");
-    server_deser >> updt;
+    try {
+      server_deser >> updt;
+    } catch (std::exception& e) {
+      dbg("[game_handler] An exception occured while reading from the server: ", e.what());
+      exception = std::current_exception();
+      // Close the socket the second thread waits on so it can exit too.
+      try {
+        gui_socket.shutdown(gui_socket.shutdown_receive);
+        server_socket.shutdown(server_socket.shutdown_both);
+      } catch (std::exception& ignored) {}
+
+      return;
+    }
+
     dbg("[game_handler] Message read, proceeding to handle it!");
     game_state.started = false;
     server_msg_handler(updt);
@@ -503,6 +539,9 @@ void RoboticClient::play()
   std::jthread game_worker{[this] { game_handler(); }};
   // Why waste the main thread, input_handler can have it.
   input_handler();
+
+  if (exception)
+    std::rethrow_exception(exception);
 }
 
 };  // namespace anonymous
@@ -549,9 +588,14 @@ int main(int argc, char* argv[])
     std::cerr << "See " << argv[0] << " -h for help.\n";
     return 1;
   } catch (ClientError& e) {
-    std::cerr << "Client error: " << e.what() << "\n";
+    std::cerr << "Client error:\n " << e.what() << "\nExiting\n";
+    return 1;
+  } catch (UnmarshallingError& e) {
+    std::cerr << "Failed to read a correct message from the server. Reason:\n\t"
+              << e.what() << "\nExiting.\n";
+    return 1;
   } catch (std::exception& e) {
-    std::cerr << "Other exception: " << e.what() << "\n";
+    std::cerr << "Other exception occured: " << e.what() << "\nExiting.\n";
     return 1;
   }
 
