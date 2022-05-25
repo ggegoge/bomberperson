@@ -17,6 +17,7 @@
 #include <type_traits>
 #include <stdexcept>
 #include <concepts>
+#include <utility>
 #include <variant>
 #include <ranges>
 #include <string>
@@ -35,6 +36,27 @@ template <typename T>
 concept Readable = requires (T x, size_t nbytes) {
   {x.read(nbytes)} -> std::same_as<std::vector<uint8_t>>;
   {x.avalaible()} -> std::same_as<size_t>;
+};
+
+// Concept for checking if a tyoe represents a pair.
+template <typename P>
+concept is_pair =  requires (P p) {
+  typename P::first_type;
+  typename P::second_type;
+};
+
+// Remove underlying const qualifiers in a pair (if it is a pair).
+template <bool is_pair, typename P>
+struct remove_const_pair {
+  using type = std::pair<std::remove_cv_t<typename P::first_type>,
+                         std::remove_cv_t<typename P::second_type>>;
+};
+
+// If it is not a pair then leave it alone. Could not use std::conditional since
+// it is not lazily evaluated hence there are those two structs.
+template <typename T>
+struct remove_const_pair<false, T> {
+  using type = T;
 };
 
 // Changing the byte order. Numbers are serialised in the network order.
@@ -227,43 +249,19 @@ public:
     }
   }
 
-  template <typename T>
-  void deser(std::vector<T>& seq)
+  template <std::ranges::sized_range Seq>
+  void deser(Seq& seq)
   {
+    using value_type = std::remove_cvref_t<typename Seq::iterator::value_type>;
+    using T = typename remove_const_pair<is_pair<value_type>, value_type>::type;
+
     uint32_t len;
     deser(len);
 
     for (uint32_t i = 0; i < len; ++i) {
       T x;
       *this >> x;
-      seq.push_back(x);
-    }
-  }
-
-  template <typename T>
-  void deser(std::set<T>& set)
-  {
-    uint32_t len;
-    deser(len);
-
-    for (uint32_t i = 0; i < len; ++i) {
-      T x;
-      *this >> x;
-      set.insert(x);
-    }
-  }
-
-  template <typename K, typename V>
-  void deser(std::map<K, V>& map)
-  {
-    uint32_t len;
-    deser(len);
-
-    for (uint32_t i = 0; i < len; ++i) {
-      K k;
-      V v;
-      *this >> k >> v;
-      map.insert({k, v});
+      seq.insert(seq.end(), x);
     }
   }
 
