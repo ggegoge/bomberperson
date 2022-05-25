@@ -122,7 +122,7 @@ struct Game {
   std::map<PlayerId, server_messages::Player> players;
   std::map<PlayerId, Position> player_positions;
   std::set<Position> blocks;
-  std::set<server_messages::Bomb> bombs;
+  std::vector<server_messages::Bomb> bombs;
   std::set<Position> explosions;
   std::map<PlayerId, Score> scores;
 };
