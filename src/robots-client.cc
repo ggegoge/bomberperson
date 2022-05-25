@@ -87,6 +87,8 @@ struct GameState {
   // Whether to treat gui input as player action or as a Join request.
   bool lobby = true;
 
+  // This indicated whether the game has just started.
+  bool started = false;
   // Server parameters.
   uint16_t timer;
   uint8_t players_count;
@@ -207,7 +209,7 @@ void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
   using namespace display_messages;
   std::visit([&ap] <typename GorL> (GorL& gl) {
       auto& [id, player] = ap;
-      dbg("[ap_handler]: new player ", player.first, "@", player.second);
+      dbg("[game_handler]: New player ", player.first, "@", player.second);
       gl.players.insert({id, player});
     }, game_state.state);
 }
@@ -237,6 +239,7 @@ void RoboticClient::gs_handler(server_messages::GameStarted& gs)
   dbg("[game_handler] gs_handler");
   using namespace display_messages;
 
+  game_state.started = true;
   std::visit([&gs] <typename GorL> (GorL& gl) {
       gl.players = gs;
     }, game_state.state);
@@ -337,6 +340,10 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
   current_game.explosions = {};
   game_state.old_blocks = current_game.blocks;
 
+  // Upon each turn the bombs get their timers reduced.
+  for (auto& [_, bomb] : game_state.bombs)
+    --bomb.second;
+
   for (const server_messages::Event& ev : events) {
     apply_event(current_game, game_state.bombs, ev);
   }
@@ -344,10 +351,6 @@ void RoboticClient::turn_handler(server_messages::Turn& turn)
   // Do not show past explosions.
   if (turnno == 0)
     current_game.explosions = {};
-
-  // Upon each turn the bombs get their timers reduced.
-  for (auto& [_, bomb] : game_state.bombs)
-    --bomb.second;
 }
 
 void RoboticClient::ge_handler(server_messages::GameEnded& ge)
@@ -398,7 +401,7 @@ void RoboticClient::update_game()
         gl.bombs = {};
 
         for (auto& [_, bomb] : game_state.bombs)
-          gl.bombs.insert(bomb);
+          gl.bombs.push_back(bomb);
 
         for (PlayerId plid : game_state.killed_this_turn)
           ++gl.scores[plid];
@@ -481,12 +484,17 @@ void RoboticClient::game_handler()
     dbg("[game_handler] Tying to read a message from server...");
     server_deser >> updt;
     dbg("[game_handler] Message read, proceeding to handle it!");
+    game_state.started = false;
     server_msg_handler(updt);
 
     update_game();
-    gui_ser << game_state.state;
-    dbg("[game_handler] Sending ", gui_ser.size(), " bytes to gui.");
-    gui_socket.send_to(boost::asio::buffer(gui_ser.drain_bytes()), gui_endpoint);
+
+    // Apparently we should not send anything to gui after GameStarted.
+    if (!game_state.started) {
+      gui_ser << game_state.state;
+      dbg("[game_handler] Sending ", gui_ser.size(), " bytes to gui.");
+      gui_socket.send_to(boost::asio::buffer(gui_ser.drain_bytes()), gui_endpoint);
+    }
   }
 }
 
