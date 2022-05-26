@@ -101,11 +101,12 @@ class RoboticClient {
   std::string name;
   tcp::socket server_socket;
   udp::socket gui_socket;
+  udp::socket gui_send_socket;
   udp::endpoint gui_endpoint;
   tcp::endpoint server_endpoint;
   Serialiser server_ser;
   Serialiser gui_ser;
-  Deserialiser<ReaderTCP> server_deser;
+  Deserialiser<ReaderTCP> server_deser{server_socket};
   Deserialiser<ReaderUDP> gui_deser;
   GameState game_state;
 
@@ -115,37 +116,25 @@ public:
   RoboticClient(const std::string& name, uint16_t port,
                 const std::string& server_addr, const std::string& gui_addr)
     : name{name}, server_socket{io_ctx}, gui_socket{io_ctx, udp::endpoint{udp::v6(), port}},
-      gui_endpoint{}, server_endpoint{}, server_deser{server_socket}, gui_deser{}
+      gui_send_socket{io_ctx}
   {
     auto [gui_ip, gui_port] = get_addr(gui_addr);
     udp::resolver udp_resolver{io_ctx};
     gui_endpoint = *udp_resolver.resolve(gui_ip, gui_port, resolver_base::numeric_service);
-
-    std::cout << "Client \"" << name << "\" communicating with endpoints:\n";
-
-    if (gui_endpoint.protocol() == udp::v6())
-      std::cout << "\tgui: [" << gui_endpoint.address() << "]:"
-                << gui_endpoint.port() << "\n";
-    else
-      std::cout << "\tgui: " << gui_endpoint.address() << ":"
-                << gui_endpoint.port() << "\n";
 
     auto [serv_ip, serv_port] = get_addr(server_addr);
     tcp::resolver tcp_resolver{io_ctx};
     server_endpoint =
       *tcp_resolver.resolve(serv_ip, serv_port, resolver_base::numeric_service);
 
-    if (server_endpoint.protocol() == tcp::v6())
-      std::cout << "\tserver: [" << server_endpoint.address() << "]:"
-                << server_endpoint.port() << "\n";
-    else
-      std::cout << "\tserver: " << server_endpoint.address() << ":"
-                << server_endpoint.port() << "\n";
-
     // Open connection to the server.
     server_socket.connect(server_endpoint);
     tcp::no_delay option(true);
     server_socket.set_option(option);
+
+    // Socket for sending to gui is a connected one, thus we know whether gui
+    // receives our messages.
+    gui_send_socket.connect(gui_endpoint);
   }
 
   // Main function for actually playing the game.
@@ -529,7 +518,18 @@ void RoboticClient::game_handler()
     if (!game_state.started) {
       gui_ser << game_state.state;
       dbg("[game_handler] Sending ", gui_ser.size(), " bytes to gui.");
-      gui_socket.send_to(boost::asio::buffer(gui_ser.drain_bytes()), gui_endpoint);
+      try {
+        gui_send_socket.send(boost::asio::buffer(gui_ser.drain_bytes()));
+      } catch (std::exception& e) {
+        dbg("[game_handler] Failed to send to gui: ", e.what());
+        exception = std::make_exception_ptr(ClientError{"Failed to write to gui."});
+        try {
+          gui_socket.shutdown(gui_socket.shutdown_receive);
+          server_socket.shutdown(server_socket.shutdown_both);
+      } catch (std::exception& ignored) {}
+
+        return;
+      }
     }
   }
 }
