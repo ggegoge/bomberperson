@@ -575,7 +575,7 @@ void RoboticServer::acceptor()
       for_places.wait(lk, [this] {return number_of_clients < MAX_CLIENTS;});
     }
 
-    tcp::socket new_client(io_ctx);
+    tcp::socket new_client{io_ctx};
     tcp_acceptor.accept(new_client);
     tcp::no_delay option(true);
     new_client.set_option(option);
@@ -708,7 +708,7 @@ void RoboticServer::join_handler()
 void RoboticServer::game_master()
 {
   dbg("[game_master] Hello!");
-  size_t turn_number = 0;
+  uint16_t turn_number = 0;
   for (;;) {
     server_messages::Turn current_turn{turn_number, {}};
     if (turn_number == game_len || lobby) {

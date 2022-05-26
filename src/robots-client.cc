@@ -212,7 +212,7 @@ void RoboticClient::ap_handler(server_messages::AcceptedPlayer& ap)
   using namespace display_messages;
   std::visit([&ap] <typename GorL> (GorL& gl) {
       auto& [id, player] = ap;
-      dbg("[game_handler]: New player ", player.first, "@", player.second);
+      dbg("[game_handler] New player ", player.first, "@", player.second);
       gl.players.insert({id, player});
     }, game_state.state);
 }
@@ -580,6 +580,7 @@ int main(int argc, char* argv[])
     // Notify about missing options only after printing help.
     po::notify(vm);
 
+    player_name = player_name.substr(0, std::numeric_limits<uint8_t>::max());
     RoboticClient client{player_name, portnum, server_addr, gui_addr};
     client.play();
 
