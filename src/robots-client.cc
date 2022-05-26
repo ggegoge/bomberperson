@@ -135,6 +135,10 @@ public:
     // Socket for sending to gui is a connected one, thus we know whether gui
     // receives our messages.
     gui_send_socket.connect(gui_endpoint);
+
+    dbg("Gui's endpoint: ", gui_endpoint);
+    dbg("Server's endpoint: ", server_endpoint);
+    dbg("Listening to gui messages on ", gui_socket.local_endpoint());
   }
 
   // Main function for actually playing the game.
@@ -569,9 +573,8 @@ int main(int argc, char* argv[])
     po::store(po::command_line_parser(argc, argv).
               options(desc).run(), vm);
 
-    std::cout << "\t\tBOMBERPERSON\n";
-
     if (vm.count("help")) {
+      std::cout << "\t\tBOMBERPERSON\n";
       std::cout << "Usage: " << argv[0] <<  " [flags]\n";
       std::cout << desc;
       return 0;

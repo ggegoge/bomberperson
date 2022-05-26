@@ -13,6 +13,7 @@
 #include <random>
 #include <map>
 #include <set>
+#include <sstream>
 #include <thread>
 #include <mutex>
 #include <shared_mutex>
@@ -104,13 +105,9 @@ struct ConnectedClient {
 // Get clients address in textual form (ip:port) from a tcp socket.
 std::string address_from_sock(const tcp::socket& sock)
 {
-  std::string ip = sock.remote_endpoint().address().to_string();
-  if (sock.remote_endpoint().protocol() == tcp::v6())
-    ip = "[" + ip + "]";
-
-  std::string port = boost::lexical_cast<std::string>(sock.remote_endpoint().port());
-
-  return ip + ":" + port;
+  std::stringstream s;
+  s << sock.remote_endpoint();
+  return s.str();
 }
 
 // Utility function for finding a free id in a map with integral keys.
@@ -215,8 +212,8 @@ public:
       size_y{size_y}, io_ctx{}, endpoint(tcp::v6(), port), tcp_acceptor{io_ctx, endpoint},
       hello{name, players_count, size_x, size_y, game_len, radius, timer}, rand{seed}
   {
-    std::cout << "Running the server \"" << name << "\" on "
-              << endpoint.address() << endpoint.port() << "\n";
+    dbg("\t\tBOMBERPERSON");
+    dbg("Running the server \"", name, "\" on ", endpoint);
   }
 
   void run();
@@ -580,8 +577,7 @@ void RoboticServer::acceptor()
     tcp::no_delay option(true);
     new_client.set_option(option);
 
-    dbg("[acceptor] Accepted new client ", new_client.remote_endpoint().address(),
-        ":", new_client.remote_endpoint().port());
+    dbg("[acceptor] Accepted new client ", new_client.remote_endpoint());
 
     ConnectedClient cl{std::move(new_client), false, {}, 0};
     ++number_of_clients;
@@ -817,9 +813,8 @@ int main(int argc, char* argv[])
     po::store(po::command_line_parser(argc, argv).
               options(desc).run(), vm);
 
-    std::cout << "\t\tBOMBERPERSON\n";
-
     if (vm.count("help")) {
+      std::cout << "\t\tBOMBERPERSON\n";
       std::cout << "Usage: " << argv[0] <<  " [flags]\n";
       std::cout << desc;
       return 0;

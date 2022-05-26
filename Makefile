@@ -1,7 +1,7 @@
 SHELL=/bin/sh
 
 CXX = g++
-CXXFLAGS = -Wall -Wextra -Werror -std=c++20 -Wconversion -O2
+CXXFLAGS = -Wall -Wextra -std=c++20 -Wconversion -O2 # -Werror
 LDFLAGS = -lboost_program_options -lpthread
 LDFLAGS_STATIC = -Wl,-Bstatic -lboost_program_options -Wl,-Bdynamic -lpthread
 
